@@ -51,7 +51,8 @@ service cloud.firestore {
              request.resource.data.buyerId is string &&
              request.resource.data.sellerId is string &&
              request.resource.data.participantIds is list &&
-             request.resource.data.participantIds.size() >= 2;
+             request.resource.data.participantIds.size() >= 2 &&
+             request.resource.data.itemId is string;
     }
 
     // Validate required fields for messages
@@ -132,18 +133,28 @@ service cloud.firestore {
     // - Only participants can read/write to chat rooms
     // - Room creation requires valid participant data
     match /chatRooms/{roomId} {
-      allow read: if isAuthenticated() && isParticipant(resource.data);
+      // Allow read if document exists and user is participant, OR if document doesn't exist (for existence check)
+      allow read: if isAuthenticated() && (
+        resource.data == null || // Allow checking if room exists
+        isParticipant(resource.data) // Allow reading if participant
+      );
       
       allow create: if isAuthenticated() && 
                        isValidChatRoomData() &&
                        (request.auth.uid == request.resource.data.buyerId || 
                         request.auth.uid == request.resource.data.sellerId);
       
-      allow update: if isAuthenticated() && isParticipant(resource.data) &&
-                       // Allow updating chat metadata but not participant lists
-                       !request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds']) ||
-                       (request.resource.data.buyerId == resource.data.buyerId &&
-                        request.resource.data.sellerId == resource.data.sellerId);
+      allow update: if isAuthenticated() && (
+        // Check if user is participant (for existing documents)
+        (resource.data != null && isParticipant(resource.data)) ||
+        // For new documents being created with set() merge
+        (request.auth.uid == request.resource.data.buyerId || 
+         request.auth.uid == request.resource.data.sellerId)
+      ) &&
+      // Allow updating chat metadata but not participant lists
+      (!request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds']) ||
+       (request.resource.data.buyerId == resource.data.buyerId &&
+        request.resource.data.sellerId == resource.data.sellerId));
 
       // 3a. MESSAGES SUBCOLLECTION
       // - Only chat participants can read messages
