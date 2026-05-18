@@ -118,27 +118,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
               ),
             ),
           ),
-          if (!_isLoading && _itemStatus != 'available')
-            Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: _itemStatus == 'sold'
-                    ? Colors.red.shade100
-                    : Colors.orange.shade100,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                _itemStatus.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: _itemStatus == 'sold'
-                      ? Colors.red.shade800
-                      : Colors.orange.shade800,
-                ),
-              ),
-            ),
+          _buildStatusBadge(),
         ],
       ),
       subtitle: Column(
@@ -218,6 +198,58 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
     return Text(
       timeText,
       style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+    );
+  }
+
+  Widget _buildStatusBadge() {
+    if (_isLoading) return const SizedBox.shrink();
+
+    String label = '';
+    Color bgColor = Colors.transparent;
+    Color textColor = Colors.transparent;
+
+    if (_itemStatus == 'available') {
+      label = 'AVAILABLE';
+      bgColor = Colors.blue.shade50;
+      textColor = Colors.blue.shade800;
+    } else if (_itemStatus == 'sold') {
+      final transactionId = widget.room['transactionId'];
+      final hasBought = transactionId != null && transactionId.toString().isNotEmpty;
+
+      if (hasBought) {
+        if (widget.currentUserId == widget.room['buyerId']) {
+          label = 'BOUGHT BY YOU';
+        } else {
+          label = 'SOLD BY YOU';
+        }
+        bgColor = Colors.green.shade100;
+        textColor = Colors.green.shade800;
+      } else {
+        label = 'SOLD TO OTHERS';
+        bgColor = Colors.red.shade100;
+        textColor = Colors.red.shade800;
+      }
+    } else {
+      label = _itemStatus.toUpperCase();
+      bgColor = Colors.orange.shade100;
+      textColor = Colors.orange.shade800;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: textColor,
+        ),
+      ),
     );
   }
 }
