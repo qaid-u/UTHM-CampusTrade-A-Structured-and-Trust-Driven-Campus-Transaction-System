@@ -25,8 +25,6 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       _transactionsStream = FirebaseFirestore.instance
           .collection('transactions')
           .where('participants', arrayContains: user.uid)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
           .snapshots();
     }
   }
@@ -59,6 +57,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           }
 
           final txs = docs.map(TransactionModel.fromFirestore).toList();
+          txs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),

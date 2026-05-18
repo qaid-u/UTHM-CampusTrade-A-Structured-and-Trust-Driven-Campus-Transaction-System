@@ -13,17 +13,16 @@ class TransactionService {
   CollectionReference<Map<String, dynamic>> get _transactions =>
       _firestore.collection('transactions');
 
-  /// Get all transactions for user (buyer OR seller)
   Stream<List<TransactionModel>> getUserTransactions(String userId) {
     return _transactions
         .where('participants', arrayContains: userId)
-        .orderBy('createdAt', descending: true)
-        .limit(50) // Use limit for efficiency
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
+          final list = snapshot.docs
               .map((doc) => TransactionModel.fromFirestore(doc))
               .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
         });
   }
 
