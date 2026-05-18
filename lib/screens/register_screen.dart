@@ -20,37 +20,68 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
 
   @override
+  void dispose() {
+    _name.dispose();
+    _studentId.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Register")),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _field(_name, "Full Name"),
-              _field(_studentId, "Student ID"),
-              _field(_phone, "Phone Number"),
-              _field(_password, "Password", obscure: true),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    _field(_name, "Full Name", action: TextInputAction.next),
+                    _field(
+                      _studentId,
+                      "Student ID",
+                      action: TextInputAction.next,
+                    ),
+                    _field(_phone, "Phone Number", action: TextInputAction.next),
+                    _field(
+                      _password,
+                      "Password",
+                      obscure: true,
+                      action: TextInputAction.done,
+                    ),
 
-              const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-              ElevatedButton(
-                onPressed: _loading ? null : _register,
-                child: Text(_loading ? "Creating..." : "Register"),
+                    ElevatedButton(
+                      onPressed: _loading ? null : _register,
+                      child: Text(_loading ? "Creating..." : "Register"),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _field(TextEditingController c, String label, {bool obscure = false}) {
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    bool obscure = false,
+    TextInputAction action = TextInputAction.next,
+  }) {
     return TextFormField(
       controller: c,
       obscureText: obscure,
+      textInputAction: action,
       decoration: InputDecoration(labelText: label),
       validator: (v) => v == null || v.isEmpty ? "Required" : null,
     );

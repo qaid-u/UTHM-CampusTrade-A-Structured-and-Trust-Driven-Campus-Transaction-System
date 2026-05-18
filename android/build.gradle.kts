@@ -15,7 +15,7 @@ allprojects {
 
 rootProject.layout.buildDirectory.value(
     rootProject.layout.buildDirectory
-        .dir("../../build")
+        .dir("../build")
         .get()
 )
 
@@ -28,14 +28,6 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-    dependencyLocking {
-        ignoredDependencies.add("io.flutter:*")
-        lockFile = file("${rootProject.projectDir}/project-${project.name}.lockfile")
-        var ignoreFile = file("${rootProject.projectDir}/.ignore-locking.md")
-        if (!ignoreFile.exists() && !project.hasProperty("local-engine-repo")) {
-            lockAllConfigurations()
-        }
-    }
 }
 
 tasks.register<Delete>("clean") {

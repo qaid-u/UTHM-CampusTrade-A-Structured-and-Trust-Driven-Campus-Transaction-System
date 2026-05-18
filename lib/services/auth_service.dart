@@ -87,9 +87,10 @@ class AuthService {
         'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
+      final data = doc.data() ?? {};
       await ref.set({
-        'profileImage': doc['profileImage'] ?? AppDefaults.defaultProfileImage,
-        'bio': doc['bio'] ?? '',
+        'profileImage': data['profileImage'] ?? AppDefaults.defaultProfileImage,
+        'bio': data['bio'] ?? '',
       }, SetOptions(merge: true));
     }
   }

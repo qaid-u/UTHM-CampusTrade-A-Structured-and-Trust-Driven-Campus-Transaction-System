@@ -26,6 +26,14 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
   bool _loading = false;
 
+  @override
+  void dispose() {
+    _title.dispose();
+    _price.dispose();
+    _desc.dispose();
+    super.dispose();
+  }
+
   Future<void> pickImage() async {
     if (_images.length >= 4) {
       ScaffoldMessenger.of(
@@ -152,7 +160,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       // Show success
       FeedbackHelper.showSuccess(
         context,
-        "🎉 Your item has been listed successfully!",
+        "Your item has been listed successfully!",
       );
 
       // Navigate back
@@ -197,73 +205,90 @@ class _AddItemScreenState extends State<AddItemScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Add Item")),
 
-      body: Padding(
-        padding: const EdgeInsets.all(20),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _title,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: "Title"),
+                  ),
 
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _title,
-              decoration: const InputDecoration(labelText: "Title"),
+                  TextField(
+                    controller: _price,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: "Price"),
+                  ),
+
+                  TextField(
+                    controller: _desc,
+                    minLines: 3,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.newline,
+                    decoration: const InputDecoration(labelText: "Description"),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  const Text(
+                    "You can upload up to 4 images per item.",
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _images.map((img) {
+                      return Stack(
+                        children: [
+                          Image.memory(
+                            img,
+                            height: 70,
+                            width: 70,
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _images.remove(img);
+                                });
+                              },
+                              child: const Icon(Icons.close, color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  ElevatedButton(
+                    onPressed: _loading ? null : pickImage,
+                    child: const Text("Add Image"),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  ElevatedButton(
+                    onPressed: _loading ? null : uploadItem,
+                    child: Text(_loading ? "Uploading..." : "Upload Item"),
+                  ),
+                ],
+              ),
             ),
-
-            TextField(
-              controller: _price,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Price"),
-            ),
-
-            TextField(
-              controller: _desc,
-              decoration: const InputDecoration(labelText: "Description"),
-            ),
-
-            const SizedBox(height: 10),
-
-            const Text(
-              "You can upload up to 4 images per item.",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-
-            const SizedBox(height: 10),
-
-            Wrap(
-              spacing: 8,
-              children: _images.map((img) {
-                return Stack(
-                  children: [
-                    Image.memory(img, height: 70, width: 70, fit: BoxFit.cover),
-                    Positioned(
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _images.remove(img);
-                          });
-                        },
-                        child: const Icon(Icons.close, color: Colors.red),
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 10),
-
-            ElevatedButton(
-              onPressed: pickImage,
-              child: const Text("Add Image"),
-            ),
-
-            const SizedBox(height: 20),
-
-            ElevatedButton(
-              onPressed: _loading ? null : uploadItem,
-              child: Text(_loading ? "Uploading..." : "Upload Item"),
-            ),
-          ],
+          ),
         ),
       ),
     );

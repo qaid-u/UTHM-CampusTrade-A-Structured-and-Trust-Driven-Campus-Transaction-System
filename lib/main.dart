@@ -23,9 +23,6 @@ class CampusTradeApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const AuthGate(),
-      builder: (context, child) {
-        return Scaffold(body: child ?? const SizedBox());
-      },
     );
   }
 }

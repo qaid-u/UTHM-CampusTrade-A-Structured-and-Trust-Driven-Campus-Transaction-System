@@ -17,41 +17,63 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
 
   @override
+  void dispose() {
+    _studentId.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextField(
-                controller: _studentId,
-                decoration: const InputDecoration(labelText: "Student ID"),
-              ),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Password"),
-              ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 120),
+                  TextField(
+                    controller: _studentId,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(labelText: "Student ID"),
+                  ),
+                  TextField(
+                    controller: _password,
+                    obscureText: true,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (!_loading) _login();
+                    },
+                    decoration: const InputDecoration(labelText: "Password"),
+                  ),
 
-              const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-              ElevatedButton(
-                onPressed: _loading ? null : _login,
-                child: Text(_loading ? "Loading..." : "Login"),
-              ),
+                  ElevatedButton(
+                    onPressed: _loading ? null : _login,
+                    child: Text(_loading ? "Loading..." : "Login"),
+                  ),
 
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  );
-                },
-                child: const Text("Create account"),
+                  TextButton(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterScreen(),
+                              ),
+                            );
+                          },
+                    child: const Text("Create account"),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
