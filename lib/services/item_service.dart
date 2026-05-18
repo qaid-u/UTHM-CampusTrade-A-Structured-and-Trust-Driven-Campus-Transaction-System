@@ -135,6 +135,8 @@ class ItemService {
     required String category,
     required String condition,
     required String meetupLocation,
+    double meetupLatitude = 0.0,
+    double meetupLongitude = 0.0,
     required List<String> images,
   }) async {
     final thumbnail = images.isNotEmpty ? images.first : '';
@@ -151,6 +153,8 @@ class ItemService {
       category: category,
       condition: condition,
       meetupLocation: meetupLocation,
+      meetupLatitude: meetupLatitude,
+      meetupLongitude: meetupLongitude,
       thumbnail: thumbnail,
       images: images,
       createdAt: DateTime.now(),
