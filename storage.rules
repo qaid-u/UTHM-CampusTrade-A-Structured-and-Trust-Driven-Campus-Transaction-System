@@ -3,7 +3,10 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper functions
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -12,29 +15,77 @@ service firebase.storage {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // 1. User profiles and avatars path rules
-    // Match files in path: /users/{userId}/avatar.jpg or /profile_pictures/{userId}/...
+    // Check if file is an image
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    // Validate file size (in bytes)
+    function isValidSize(maxSizeMB) {
+      return request.resource.size < maxSizeMB * 1024 * 1024;
+    }
+
+    // ============================================
+    // STORAGE PATH RULES
+    // ============================================
+
+    // 1. USER PROFILES & AVATARS
+    // Path: /users/{userId}/avatar.jpg or /users/{userId}/profile/*
+    // - Anyone can read profile pictures (for displaying seller info)
+    // - Only owner can upload/update their own avatar
+    // - Max 5MB for profile pictures
     match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024; // Limited to 5MB max
+      allow write: if isOwner(userId) && isImage() && isValidSize(5);
     }
 
+    // Legacy path: /profile_pictures/{userId}/*
     match /profile_pictures/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024; // Limited to 5MB max
+      allow write: if isOwner(userId) && isImage() && isValidSize(5);
     }
 
-    // 2. Item images / Product listing media rules
-    // Match files in path: /items/{itemId}/... or /item_images/{itemId}/...
+    // 2. ITEM IMAGES & PRODUCT LISTINGS
+    // Path: /items/{itemId}/* or /item_images/{itemId}/*
+    // - Anyone can read item images (for browsing marketplace)
+    // - Any authenticated user can upload (validation happens in Firestore)
+    // - Max 10MB per image (allows for high-quality photos)
+    // - Must be image files only
     match /items/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      // Allow writing if user is authenticated and uploads files under 10MB each
-      allow write: if isAuthenticated() && request.resource.size < 10 * 1024 * 1024;
+      allow write: if isAuthenticated() && isImage() && isValidSize(10);
     }
 
+    // Legacy path: /item_images/{itemId}/*
     match /item_images/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.resource.size < 10 * 1024 * 1024; // Limited to 10MB max
+      allow write: if isAuthenticated() && isImage() && isValidSize(10);
+    }
+
+    // 3. THUMBNAILS
+    // Path: /thumbnails/{itemId}/*
+    // - Optimized smaller images for feed display
+    // - Same access rules as item images
+    // - Max 2MB for thumbnails
+    match /thumbnails/{itemId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isImage() && isValidSize(2);
+    }
+
+    // 4. TRANSACTION/MEETUP PHOTOS (Optional Future Feature)
+    // Path: /transactions/{transactionId}/*
+    // - For proof of meetup/completion photos
+    // - Only transaction participants can access
+    // - Max 5MB per photo
+    match /transactions/{transactionId}/{allPaths=**} {
+      allow read: if isAuthenticated(); // Can be restricted further with Firestore check
+      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+    }
+
+    // 5. DEFAULT DENY RULE
+    // - Block access to any paths not explicitly allowed above
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
