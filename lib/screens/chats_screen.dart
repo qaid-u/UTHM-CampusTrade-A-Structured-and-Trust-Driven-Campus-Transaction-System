@@ -23,8 +23,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   void initState() {
     super.initState();
-    // Load unread count immediately without defer for faster display
-    _loadUnreadCount();
+    // Load unread count after the first frame to prevent blocking
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUnreadCount();
+    });
 
     // Mark initial load done quickly
     Future.delayed(const Duration(milliseconds: 200), () {

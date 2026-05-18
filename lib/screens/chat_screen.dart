@@ -42,9 +42,11 @@ class _ChatScreenState extends State<ChatScreen> {
         .limit(50)
         .snapshots();
 
-    // Load immediately for faster response
-    _loadChatRoomInfo();
-    _markNotificationsAsRead();
+    // Load immediately after the first frame has rendered to prevent UI freezing
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadChatRoomInfo();
+      _markNotificationsAsRead();
+    });
   }
 
   Future<void> _markNotificationsAsRead() async {
