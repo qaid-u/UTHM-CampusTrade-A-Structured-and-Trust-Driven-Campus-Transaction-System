@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/transaction_service.dart';
 import '../widgets/status_badge.dart';
+import 'meetup_location_screen.dart';
 
 class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
@@ -106,10 +107,45 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           ],
                         ),
                       if (tx.status == TransactionStatus.accepted)
-                        FilledButton(
-                          onPressed: () =>
-                              _update(tx.id, 'payment_processing', user.uid),
-                          child: const Text('Simulate Payment'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => MeetupLocationScreen(
+                                        selected: tx.meetupLocation,
+                                      ),
+                                    ),
+                                  );
+                                  if (result != null && result is Map) {
+                                    await TransactionService.instance.setMeetupLocation(
+                                      transactionId: tx.id,
+                                      locationName: result['location'],
+                                      latitude: result['latitude'],
+                                      longitude: result['longitude'],
+                                    );
+                                  }
+                                },
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade600,
+                                  foregroundColor: Colors.white,
+                                ),
+                                icon: const Icon(Icons.map_rounded, size: 16),
+                                label: const Text('Set Meetup', style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    _update(tx.id, 'payment_processing', user.uid),
+                                child: const Text('Simulate Pay', style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                          ],
                         ),
                       if (tx.status == TransactionStatus.payment_processing)
                         FilledButton(
