@@ -1,221 +1,295 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../models/transaction_model.dart';
 import '../services/auth_service.dart';
-import '../services/database_service.dart';
-import '../widgets/custom_button.dart';
+import '../services/chat_service.dart';
+import '../services/notification_service.dart';
+import '../services/offer_service.dart';
+import '../models/user_model.dart';
 import 'chat_screen.dart';
-import 'meetup_location_screen.dart';
 
 class ItemDetailScreen extends StatelessWidget {
   const ItemDetailScreen({super.key, required this.itemId});
 
   final String itemId;
 
+  Future<UserModel?> _getSeller(String sellerId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(sellerId)
+          .get();
+
+      if (!doc.exists || doc.data() == null) return null;
+
+      return UserModel.fromJson(doc.data()!);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: DatabaseService.instance,
-      builder: (context, _) {
-        final item = DatabaseService.instance.findItem(itemId)!;
-        final seller = DatabaseService.instance.findUser(item.sellerId)!;
+    final currentUser = AuthService.instance.currentUser;
+
+    if (currentUser == null) {
+      return const Scaffold(body: Center(child: Text("Not logged in")));
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('items')
+          .doc(itemId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!snapshot.data!.exists) {
+          return const Scaffold(body: Center(child: Text("Item not found")));
+        }
+
+        final data = snapshot.data!.data()!;
+
+        final title = data['title'] ?? 'Untitled';
+        final description = data['description'] ?? '';
+        final price = (data['price'] ?? 0).toDouble();
+        final sellerId = data['sellerId'] ?? '';
+        final meetupLocation = data['meetupLocation'] ?? '';
+
+        /// 🔥 FIX: ALWAYS USE images[]
+        final List images = data['images'] ?? [];
+
+        final isOwner = currentUser.uid == sellerId;
+
         return Scaffold(
-          appBar: AppBar(title: const Text('Item details')),
-          body: ListView(
+          appBar: AppBar(title: Text(title)),
+
+          body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            children: [
-              Container(
-                height: 220,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0B2D5B), Color(0xFF1BA86D)],
+
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ---------------- IMAGE CAROUSEL ----------------
+                Container(
+                  height: 260,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.grey.shade200,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+
+                  child: images.isEmpty
+                      ? const Center(child: Icon(Icons.image_not_supported))
+                      : PageView.builder(
+                          itemCount: images.length,
+                          itemBuilder: (context, index) {
+                            final url = images[index];
+
+                            return Image.network(
+                              url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.broken_image),
+                            );
+                          },
+                        ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                child: Center(
-                  child: Text(
-                    item.imageLabel,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 42,
-                    ),
+
+                const SizedBox(height: 6),
+
+                Text(
+                  "RM ${price.toStringAsFixed(2)}",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                item.title,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'RM ${item.price.toStringAsFixed(2)}',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.secondary,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Chip(label: Text(item.category)),
-                  Chip(label: Text(item.condition)),
-                  Chip(
-                    avatar: const Icon(Icons.place_rounded, size: 16),
-                    label: Text(item.meetupLocation),
+
+                const SizedBox(height: 16),
+
+                if (description.isNotEmpty) ...[
+                  const Text(
+                    "Description",
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  const SizedBox(height: 6),
+                  Text(description),
+                  const SizedBox(height: 16),
                 ],
-              ),
-              const SizedBox(height: 18),
-              _panel(
-                context,
-                title: 'Description',
-                child: Text(item.description),
-              ),
-              const SizedBox(height: 12),
-              _panel(
-                context,
-                title: 'Seller profile',
-                child: Row(
-                  children: [
-                    CircleAvatar(child: Text(seller.name[0])),
-                    const SizedBox(width: 12),
-                    Expanded(
+
+                if (meetupLocation.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(meetupLocation)),
+                    ],
+                  ),
+
+                const SizedBox(height: 20),
+
+                // ---------------- SELLER ----------------
+                FutureBuilder<UserModel?>(
+                  future: _getSeller(sellerId),
+                  builder: (context, snap) {
+                    final seller = snap.data;
+
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            seller.name,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          const Text(
+                            "Seller",
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          Text('${seller.studentId} | ${seller.email}'),
                           const SizedBox(height: 6),
-                          LinearProgressIndicator(
-                            value: seller.trustScore / 100,
-                            minHeight: 8,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          const SizedBox(height: 4),
-                          Text('Trust score ${seller.trustScore}/100'),
+                          Text(seller?.name ?? "Unknown"),
+                          Text(seller?.studentId ?? ""),
                         ],
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: 16),
-              CustomButton(
-                label: 'Make Offer',
-                icon: Icons.local_offer_rounded,
-                onPressed: () => _makeOffer(context, item.price),
-              ),
-              const SizedBox(height: 10),
-              CustomButton(
-                label: 'Chat Seller',
-                icon: Icons.chat_rounded,
-                isSecondary: true,
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ChatScreen(itemId: item.id),
+
+                const SizedBox(height: 20),
+
+                // ---------------- ACTIONS ----------------
+                if (isOwner)
+                  const Center(child: Text("This is your listing"))
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _makeOffer(context, data),
+                          child: const Text("Make Offer"),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final roomId = await ChatService.getOrCreateRoom(
+                              itemId: itemId,
+                              itemTitle: title,
+                              itemThumbnail: images.isNotEmpty
+                                  ? images.first.toString()
+                                  : '',
+                              buyerId: currentUser.uid,
+                              sellerId: sellerId,
+                            );
+
+                            if (!context.mounted) return;
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(roomId: roomId),
+                              ),
+                            );
+                          },
+                          child: const Text("Chat"),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              CustomButton(
-                label: 'View Meetup Location',
-                icon: Icons.map_rounded,
-                isSecondary: true,
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        MeetupLocationScreen(selected: item.meetupLocation),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _panel(
-    BuildContext context, {
-    required String title,
-    required Widget child,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
+  Future<void> _makeOffer(
+    BuildContext context,
+    Map<String, dynamic> item,
+  ) async {
+    final controller = TextEditingController();
 
-  Future<void> _makeOffer(BuildContext context, double price) async {
-    final controller = TextEditingController(text: price.toStringAsFixed(0));
-    final item = DatabaseService.instance.findItem(itemId)!;
     final result = await showDialog<double>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Make an offer'),
+      builder: (_) => AlertDialog(
+        title: const Text("Make Offer"),
         content: TextField(
           controller: controller,
-          autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(prefixText: 'RM '),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text("Cancel"),
           ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, double.tryParse(controller.text)),
-            child: const Text('Submit'),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, double.tryParse(controller.text));
+            },
+            child: const Text("Submit"),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (result == null || result <= 0) return;
-    await DatabaseService.instance.addTransaction(
-      TransactionModel(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        itemId: item.id,
-        buyerId: AuthService.instance.currentUser!.id,
-        sellerId: item.sellerId,
-        offerPrice: result,
-        status: TransactionStatus.pending,
-        meetupLocation: item.meetupLocation,
-        createdAt: DateTime.now(),
-      ),
+
+    if (result == null) return;
+
+    final currentUser = AuthService.instance.currentUser!;
+    final title = item['title'] ?? 'Untitled';
+    final sellerId = item['sellerId'];
+
+    // 🔥 Extract first image for thumbnail safely
+    final List images = item['images'] ?? [];
+    final itemThumbnail = images.isNotEmpty ? images.first.toString() : '';
+
+    final roomId = await ChatService.getOrCreateRoom(
+      itemId: itemId,
+      itemTitle: title,
+      itemThumbnail: itemThumbnail,
+      buyerId: currentUser.uid,
+      sellerId: sellerId,
     );
+
+    await OfferService.createOffer(
+      roomId: roomId,
+      itemId: itemId,
+      itemTitle: title,
+      buyerId: currentUser.uid,
+      sellerId: sellerId,
+      price: result,
+    );
+
+    await NotificationService.instance.notifyUser(
+      userId: sellerId,
+      title: "New Offer",
+      body: "RM ${result.toStringAsFixed(2)}",
+    );
+
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: const Text('Offer submitted. Seller can accept or reject it.'),
-        action: SnackBarAction(label: 'OK', onPressed: () {}),
-      ),
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ChatScreen(roomId: roomId)),
     );
   }
 }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../data/sample_data.dart';
-
 class MeetupLocationScreen extends StatefulWidget {
   const MeetupLocationScreen({super.key, this.selected});
 
@@ -12,7 +10,23 @@ class MeetupLocationScreen extends StatefulWidget {
 }
 
 class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
-  late String _selected = widget.selected ?? meetupLocations.first;
+  late String _selected = widget.selected ?? _meetupLocations.first;
+
+  static const List<String> _meetupLocations = [
+    'UTHM Library Lobby',
+    'Student Centre',
+    'Cafeteria Area',
+    'Faculty Entrance',
+    'Main Hall',
+  ];
+
+  static const Map<String, String> _safetyNotes = {
+    'UTHM Library Lobby': 'Bright indoor area with staff nearby.',
+    'Student Centre': 'Busy student space suitable for daytime meetups.',
+    'Cafeteria Area': 'Public food court area with steady foot traffic.',
+    'Faculty Entrance': 'Meet near the guard-visible entrance area.',
+    'Main Hall': 'Open central location for quick exchanges.',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -26,63 +40,29 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFFEAF4FF),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFD6E6F7)),
             ),
-            child: Stack(
-              children: [
-                const Center(
-                  child: Icon(
-                    Icons.map_rounded,
-                    size: 92,
-                    color: Color(0xFF0B2D5B),
-                  ),
-                ),
-                ...List.generate(meetupLocations.length, (index) {
-                  final left = 28.0 + (index * 58) % 250;
-                  final top = 36.0 + (index * 31) % 130;
-                  final location = meetupLocations[index];
-                  return Positioned(
-                    left: left,
-                    top: top,
-                    child: Icon(
-                      Icons.location_on_rounded,
-                      color: location == _selected
-                          ? const Color(0xFF1BA86D)
-                          : const Color(0xFF0B2D5B),
-                      size: location == _selected ? 34 : 26,
-                    ),
-                  );
-                }),
-              ],
-            ),
+            child: const Center(child: Icon(Icons.map_rounded, size: 80)),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Mock campus map. Add a Google Maps API key and google_maps_flutter later to replace this placeholder.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+
           const SizedBox(height: 16),
-          ...meetupLocations.map(
-            (location) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.shield_rounded),
-                  title: Text(location),
-                  subtitle: Text(safetyNotes[location]!),
-                  trailing: FilledButton(
-                    onPressed: () {
-                      setState(() => _selected = location);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('$location selected.')),
-                      );
-                    },
-                    child: Text(location == _selected ? 'Selected' : 'Select'),
-                  ),
+
+          ..._meetupLocations.map((location) {
+            final selected = location == _selected;
+
+            return Card(
+              child: ListTile(
+                title: Text(location),
+                subtitle: Text(_safetyNotes[location] ?? ''),
+                trailing: FilledButton(
+                  onPressed: () {
+                    setState(() => _selected = location);
+                    Navigator.pop(context, location);
+                  },
+                  child: Text(selected ? 'Selected' : 'Select'),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );

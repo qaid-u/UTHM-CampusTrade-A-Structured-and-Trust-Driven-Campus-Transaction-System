@@ -1,72 +1,100 @@
-import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../models/user_model.dart';
-import 'database_service.dart';
+import '../constants/app_defaults.dart';
 
-class AuthService extends ChangeNotifier {
+class AuthService {
   AuthService._();
+  static final instance = AuthService._();
 
-  static final AuthService instance = AuthService._();
+  final _auth = FirebaseAuth.instance;
+  final _db = FirebaseFirestore.instance;
 
-  UserModel? _currentUser;
-  UserModel? get currentUser => _currentUser;
-  bool get isLoggedIn => _currentUser != null;
+  User? get currentUser => _auth.currentUser;
 
-  Future<String?> login(String email, String password) async {
-    final user = DatabaseService.instance.findUserByEmail(email.trim());
-    if (user == null || user.password != password) {
-      return 'Invalid email or password.';
-    }
-    _currentUser = user;
-    notifyListeners();
-    return null;
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  String _emailFromStudentId(String studentId) {
+    return '$studentId@student.uthm.edu.my';
   }
 
   Future<String?> register({
     required String name,
     required String studentId,
-    required String email,
     required String phone,
     required String password,
   }) async {
-    final cleanEmail = email.trim().toLowerCase();
-    if (name.trim().length < 3) return 'Name must be at least 3 characters.';
-    if (!RegExp(r'^[A-Za-z]{1,4}\d{6,}$').hasMatch(studentId.trim())) {
-      return 'Use a valid UTHM-style student ID, e.g. CB220101.';
-    }
-    if (!cleanEmail.endsWith('@student.uthm.edu.my')) {
-      return 'Use your @student.uthm.edu.my email.';
-    }
-    if (!RegExp(r'^\d{9,12}$').hasMatch(phone.trim())) {
-      return 'Enter a valid Malaysian phone number without spaces.';
-    }
-    if (password.length < 8) return 'Password must be at least 8 characters.';
-    if (DatabaseService.instance.findUserByEmail(cleanEmail) != null) {
-      return 'This email is already registered.';
-    }
+    try {
+      final email = _emailFromStudentId(studentId);
 
-    final user = UserModel(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      name: name.trim(),
-      studentId: studentId.trim().toUpperCase(),
-      email: cleanEmail,
-      phone: phone.trim(),
-      password: password,
-    );
-    await DatabaseService.instance.addUser(user);
-    _currentUser = user;
-    notifyListeners();
-    return null;
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final uid = cred.user!.uid;
+
+      await _db.collection('users').doc(uid).set({
+        'uid': uid,
+        'name': name,
+        'studentId': studentId,
+        'phone': phone,
+        'email': email,
+        'bio': '',
+        'profileImage': AppDefaults.defaultProfileImage,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
-  void refreshCurrentUser() {
-    if (_currentUser == null) return;
-    _currentUser = DatabaseService.instance.findUser(_currentUser!.id);
-    notifyListeners();
+  Future<String?> login({
+    required String studentId,
+    required String password,
+  }) async {
+    try {
+      final email = _emailFromStudentId(studentId);
+
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      await _ensureUserDoc(cred.user!);
+
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
-  void logout() {
-    _currentUser = null;
-    notifyListeners();
+  Future<void> _ensureUserDoc(User user) async {
+    final ref = _db.collection('users').doc(user.uid);
+    final doc = await ref.get();
+
+    if (!doc.exists) {
+      await ref.set({
+        'uid': user.uid,
+        'name': 'New User',
+        'studentId': '',
+        'phone': '',
+        'email': user.email ?? '',
+        'bio': '',
+        'profileImage': AppDefaults.defaultProfileImage,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await ref.set({
+        'profileImage': doc['profileImage'] ?? AppDefaults.defaultProfileImage,
+        'bio': doc['bio'] ?? '',
+      }, SetOptions(merge: true));
+    }
+  }
+
+  Future<void> logout() async {
+    await _auth.signOut();
   }
 }

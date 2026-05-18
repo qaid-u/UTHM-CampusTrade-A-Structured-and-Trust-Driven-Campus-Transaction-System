@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../models/transaction_model.dart';
 
 class StatusBadge extends StatelessWidget {
@@ -13,8 +12,11 @@ class StatusBadge extends StatelessWidget {
       TransactionStatus.pending => Colors.orange,
       TransactionStatus.accepted => Colors.blue,
       TransactionStatus.rejected => Colors.red,
+      TransactionStatus.payment_processing => Colors.purple,
       TransactionStatus.completed => Colors.green,
+      TransactionStatus.cancelled => Colors.grey,
     };
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -23,7 +25,7 @@ class StatusBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
-        status.name.toUpperCase(),
+        status.name.replaceAll('_', ' ').toUpperCase(),
         style: TextStyle(
           color: color.shade700,
           fontWeight: FontWeight.w800,

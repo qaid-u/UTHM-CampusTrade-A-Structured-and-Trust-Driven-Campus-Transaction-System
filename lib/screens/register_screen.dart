@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-
 import '../services/auth_service.dart';
-import '../widgets/custom_button.dart';
+import '../widgets/feedback_helper.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,98 +11,110 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _name = TextEditingController();
   final _studentId = TextEditingController();
-  final _email = TextEditingController();
   final _phone = TextEditingController();
   final _password = TextEditingController();
 
-  @override
-  void dispose() {
-    _name.dispose();
-    _studentId.dispose();
-    _email.dispose();
-    _phone.dispose();
-    _password.dispose();
-    super.dispose();
-  }
+  bool _loading = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Register')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                _field(_name, 'Full name', Icons.badge_rounded),
-                _field(_studentId, 'Student ID', Icons.school_rounded),
-                _field(_email, 'UTHM student email', Icons.mail_rounded),
-                _field(
-                  _phone,
-                  'Phone number',
-                  Icons.phone_rounded,
-                  keyboardType: TextInputType.phone,
-                ),
-                _field(
-                  _password,
-                  'Password',
-                  Icons.lock_rounded,
-                  obscure: true,
-                ),
-                const SizedBox(height: 16),
-                CustomButton(
-                  label: 'Register',
-                  icon: Icons.check_circle_rounded,
-                  onPressed: _register,
-                ),
-              ],
-            ),
+      appBar: AppBar(title: const Text("Register")),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _field(_name, "Full Name"),
+              _field(_studentId, "Student ID"),
+              _field(_phone, "Phone Number"),
+              _field(_password, "Password", obscure: true),
+
+              const SizedBox(height: 20),
+
+              ElevatedButton(
+                onPressed: _loading ? null : _register,
+                child: Text(_loading ? "Creating..." : "Register"),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _field(
-    TextEditingController controller,
-    String label,
-    IconData icon, {
-    bool obscure = false,
-    TextInputType? keyboardType,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextFormField(
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-        validator: (value) =>
-            (value == null || value.trim().isEmpty) ? 'Required field.' : null,
-      ),
+  Widget _field(TextEditingController c, String label, {bool obscure = false}) {
+    return TextFormField(
+      controller: c,
+      obscureText: obscure,
+      decoration: InputDecoration(labelText: label),
+      validator: (v) => v == null || v.isEmpty ? "Required" : null,
     );
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    final error = await AuthService.instance.register(
-      name: _name.text,
-      studentId: _studentId.text,
-      email: _email.text,
-      phone: _phone.text,
-      password: _password.text,
-    );
-    if (!mounted) return;
-    if (error == null) {
-      Navigator.of(context).pop();
-    } else {
-      ScaffoldMessenger.of(
+    if (!_formKey.currentState!.validate()) {
+      FeedbackHelper.showWarning(
         context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+        "Please fill in all fields correctly",
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final error = await AuthService.instance.register(
+        name: _name.text.trim(),
+        studentId: _studentId.text.trim(),
+        phone: _phone.text.trim(),
+        password: _password.text.trim(),
+      );
+
+      // Check if widget is still mounted before calling setState
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+
+      if (error != null) {
+        // Show specific error messages
+        if (error.contains('email-already-in-use') ||
+            error.contains('Student ID')) {
+          FeedbackHelper.showError(
+            context,
+            "This Student ID is already registered. Please login instead.",
+          );
+        } else if (error.contains('weak-password')) {
+          FeedbackHelper.showError(
+            context,
+            "Password is too weak. Use at least 6 characters.",
+          );
+        } else if (error.contains('network')) {
+          FeedbackHelper.showError(
+            context,
+            "Network error. Please check your internet connection.",
+          );
+        } else {
+          FeedbackHelper.showError(context, "Registration failed: $error");
+        }
+        return;
+      }
+
+      // Success
+      FeedbackHelper.showSuccess(context, "Account created successfully!");
+
+      // Navigate back to login
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      FeedbackHelper.showError(context, "An unexpected error occurred");
     }
   }
 }

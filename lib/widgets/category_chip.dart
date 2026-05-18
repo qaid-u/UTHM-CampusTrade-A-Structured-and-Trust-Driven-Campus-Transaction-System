@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class CategoryChip extends StatelessWidget {
   const CategoryChip({
     super.key,
@@ -19,8 +21,20 @@ class CategoryChip extends StatelessWidget {
       selected: selected,
       onSelected: onSelected,
       showCheckmark: false,
-      avatar: Icon(_iconFor(label), size: 17),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      avatar: Icon(
+        _iconFor(label),
+        size: 17,
+        color: selected ? Colors.white : AppColors.electricBlue,
+      ),
+      labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: selected ? Colors.white : AppColors.navy,
+        fontWeight: FontWeight.w800,
+      ),
+      backgroundColor: Colors.white,
+      selectedColor: AppColors.red,
+      side: BorderSide(color: selected ? AppColors.red : AppColors.border),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      shape: const StadiumBorder(),
     );
   }
 

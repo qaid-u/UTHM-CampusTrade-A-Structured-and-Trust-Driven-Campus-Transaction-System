@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class CustomButton extends StatelessWidget {
   const CustomButton({
     super.key,
@@ -30,21 +32,39 @@ class CustomButton extends StatelessWidget {
       return OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          minimumSize: const Size.fromHeight(54),
+          backgroundColor: Colors.white,
+          foregroundColor: AppColors.navy,
+          side: const BorderSide(color: AppColors.border, width: 1.4),
+          shape: const StadiumBorder(),
         ),
         child: child,
       );
     }
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: onPressed == null ? null : AppGradients.primaryAction,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: onPressed == null
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x33E3223A),
+                  blurRadius: 22,
+                  offset: Offset(0, 10),
+                ),
+              ],
       ),
-      child: child,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size.fromHeight(54),
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: const StadiumBorder(),
+        ),
+        child: child,
+      ),
     );
   }
 }

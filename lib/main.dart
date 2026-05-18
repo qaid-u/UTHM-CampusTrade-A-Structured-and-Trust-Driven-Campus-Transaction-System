@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-import 'screens/home_screen.dart';
-import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
-import 'services/database_service.dart';
+import 'screens/login_screen.dart';
+import 'screens/main_shell.dart';
+import 'theme/app_theme.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await DatabaseService.instance.load();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   runApp(const CampusTradeApp());
 }
 
@@ -18,46 +21,54 @@ class CampusTradeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'UTHMCampus Trade',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0B2D5B),
-          primary: const Color(0xFF0B2D5B),
-          secondary: const Color(0xFF1BA86D),
-          surface: Colors.white,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF7F9FC),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE5EAF1)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFD9E2EC)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFD9E2EC)),
-          ),
-        ),
-      ),
-      home: AnimatedBuilder(
-        animation: AuthService.instance,
-        builder: (context, _) {
-          return AuthService.instance.isLoggedIn
-              ? const MainShell()
-              : const LoginScreen();
-        },
-      ),
+      theme: AppTheme.light,
+      home: const AuthGate(),
+      builder: (context, child) {
+        return Scaffold(body: child ?? const SizedBox());
+      },
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: AuthService.instance.authStateChanges,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error: ${snapshot.error}'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(onPressed: () {}, child: const Text('Retry')),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final user = snapshot.data;
+
+        if (user == null) {
+          return const LoginScreen();
+        }
+
+        return const MainShell();
+      },
     );
   }
 }

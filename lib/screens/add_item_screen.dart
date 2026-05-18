@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
 
-import '../data/sample_data.dart';
-import '../models/item_model.dart';
-import '../services/auth_service.dart';
-import '../services/database_service.dart';
-import '../widgets/custom_button.dart';
+import '../services/storage_service.dart';
+import '../services/item_service.dart';
+import '../constants/app_defaults.dart';
+import '../widgets/feedback_helper.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -13,200 +16,253 @@ class AddItemScreen extends StatefulWidget {
   State<AddItemScreen> createState() => _AddItemScreenState();
 }
 
-class _AddItemScreenState extends State<AddItemScreen>
-    with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _description = TextEditingController();
+class _AddItemScreenState extends State<AddItemScreen> {
+  final _title = TextEditingController();
   final _price = TextEditingController();
-  String _category = categories.first;
-  String _condition = conditions[2];
-  String _location = meetupLocations.first;
-  late final AnimationController _success;
+  final _desc = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    _success = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 650),
-    );
+  final List<Uint8List> _images = [];
+  final picker = ImagePicker();
+
+  bool _loading = false;
+
+  Future<void> pickImage() async {
+    if (_images.length >= 4) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Max 4 images allowed")));
+      return;
+    }
+
+    final file = await picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+
+    setState(() {
+      _images.add(bytes);
+    });
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    _description.dispose();
-    _price.dispose();
-    _success.dispose();
-    super.dispose();
+  Future<void> uploadItem() async {
+    // Validate inputs
+    if (_title.text.trim().isEmpty) {
+      FeedbackHelper.showWarning(context, "Please enter a title for your item");
+      return;
+    }
+
+    if (_price.text.trim().isEmpty) {
+      FeedbackHelper.showWarning(context, "Please enter a price");
+      return;
+    }
+
+    if (_images.isEmpty) {
+      FeedbackHelper.showWarning(
+        context,
+        "Please add at least one photo of your item",
+      );
+      return;
+    }
+
+    // Validate price is a valid number
+    final price = double.tryParse(_price.text.trim());
+    if (price == null || price <= 0) {
+      FeedbackHelper.showError(
+        context,
+        "Please enter a valid price (greater than 0)",
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+        FeedbackHelper.showError(context, "Please login to upload items");
+        return;
+      }
+
+      final uid = user.uid;
+      debugPrint('Current user UID: $uid');
+
+      // Show loading feedback
+      if (!mounted) return;
+      FeedbackHelper.showLoading(
+        context,
+        message: "Uploading your item...\nThis may take a moment",
+      );
+
+      // Fetch seller data ONCE and embed in item (avoids future joins)
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+
+      if (!userDoc.exists) {
+        if (!mounted) return;
+        FeedbackHelper.hideLoading(context);
+        FeedbackHelper.showError(context, "User profile not found");
+        return;
+      }
+
+      final userData = userDoc.data()!;
+      final sellerName = userData['name'] ?? 'Unknown';
+      final sellerImage =
+          userData['profileImage'] ?? AppDefaults.defaultProfileImage;
+      final sellerStudentId = userData['studentId'] ?? '';
+
+      final docRef = FirebaseFirestore.instance.collection('items').doc();
+      final itemId = docRef.id;
+
+      debugPrint('Uploading ${_images.length} images for item: $itemId');
+
+      // UPLOAD IMAGES (COMPRESSED)
+      final imageUrls = await StorageService.instance.uploadItemImages(
+        itemId: itemId,
+        images: _images,
+      );
+
+      debugPrint('Successfully uploaded ${imageUrls.length} images');
+
+      // SAVE ITEM with embedded seller snapshot (eliminates N+1 reads)
+      await ItemService.instance.createItem(
+        itemId: itemId,
+        sellerId: uid,
+        sellerName: sellerName,
+        sellerImage: sellerImage,
+        sellerStudentId: sellerStudentId,
+        title: _title.text.trim(),
+        description: _desc.text.trim(),
+        price: price,
+        category: 'Others', // TODO: Add category picker
+        condition: 'Used', // TODO: Add condition picker
+        meetupLocation: 'Library', // TODO: Add location picker
+        images: imageUrls,
+      );
+
+      debugPrint('Item saved to Firestore with seller snapshot');
+
+      // Hide loading
+      if (!mounted) return;
+      FeedbackHelper.hideLoading(context);
+
+      // Show success
+      FeedbackHelper.showSuccess(
+        context,
+        "🎉 Your item has been listed successfully!",
+      );
+
+      // Navigate back
+      Navigator.pop(context);
+    } catch (e, stackTrace) {
+      debugPrint('Upload error: $e');
+      debugPrint('Stack trace: $stackTrace');
+
+      // Hide loading
+      if (mounted) {
+        FeedbackHelper.hideLoading(context);
+
+        // Show specific error messages
+        if (e.toString().contains('storage/unauthorized')) {
+          FeedbackHelper.showError(
+            context,
+            "Storage permission denied. Please check Firebase Storage rules.",
+          );
+        } else if (e.toString().contains('permission-denied')) {
+          FeedbackHelper.showError(
+            context,
+            "Permission denied. Please check Firestore security rules.",
+          );
+        } else if (e.toString().contains('network')) {
+          FeedbackHelper.showError(
+            context,
+            "Network error. Please check your internet connection.",
+          );
+        } else {
+          FeedbackHelper.showError(context, "Failed to upload item: $e");
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Post an item')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text("Add Item")),
+
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ScaleTransition(
-              scale: Tween<double>(begin: 1, end: 1.04).animate(
-                CurvedAnimation(parent: _success, curve: Curves.elasticOut),
-              ),
-              child: Container(
-                height: 142,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF4FF),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFD6E6F7)),
-                ),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            TextField(
+              controller: _title,
+              decoration: const InputDecoration(labelText: "Title"),
+            ),
+
+            TextField(
+              controller: _price,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Price"),
+            ),
+
+            TextField(
+              controller: _desc,
+              decoration: const InputDecoration(labelText: "Description"),
+            ),
+
+            const SizedBox(height: 10),
+
+            const Text(
+              "You can upload up to 4 images per item.",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+
+            const SizedBox(height: 10),
+
+            Wrap(
+              spacing: 8,
+              children: _images.map((img) {
+                return Stack(
                   children: [
-                    Icon(
-                      Icons.add_photo_alternate_rounded,
-                      size: 42,
-                      color: Color(0xFF0B2D5B),
+                    Image.memory(img, height: 70, width: 70, fit: BoxFit.cover),
+                    Positioned(
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _images.remove(img);
+                          });
+                        },
+                        child: const Icon(Icons.close, color: Colors.red),
+                      ),
                     ),
-                    SizedBox(height: 8),
-                    Text('Image upload placeholder'),
                   ],
-                ),
-              ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 16),
-            Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  _field(_name, 'Item name', Icons.sell_rounded),
-                  _dropdown(
-                    'Category',
-                    Icons.category_rounded,
-                    _category,
-                    categories,
-                    (value) => setState(() => _category = value!),
-                  ),
-                  _field(
-                    _description,
-                    'Description',
-                    Icons.notes_rounded,
-                    maxLines: 4,
-                  ),
-                  _field(
-                    _price,
-                    'Price (RM)',
-                    Icons.payments_rounded,
-                    keyboardType: TextInputType.number,
-                  ),
-                  _dropdown(
-                    'Condition',
-                    Icons.verified_rounded,
-                    _condition,
-                    conditions,
-                    (value) => setState(() => _condition = value!),
-                  ),
-                  _dropdown(
-                    'Preferred meetup location',
-                    Icons.place_rounded,
-                    _location,
-                    meetupLocations,
-                    (value) => setState(() => _location = value!),
-                  ),
-                  const SizedBox(height: 12),
-                  CustomButton(
-                    label: 'Submit listing',
-                    icon: Icons.publish_rounded,
-                    onPressed: _submit,
-                  ),
-                ],
-              ),
+
+            const SizedBox(height: 10),
+
+            ElevatedButton(
+              onPressed: pickImage,
+              child: const Text("Add Image"),
             ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _field(
-    TextEditingController controller,
-    String label,
-    IconData icon, {
-    int maxLines = 1,
-    TextInputType? keyboardType,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextFormField(
-        controller: controller,
-        maxLines: maxLines,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) return 'Required field.';
-          if (label.startsWith('Price') &&
-              (double.tryParse(value.trim()) == null ||
-                  double.parse(value.trim()) <= 0)) {
-            return 'Enter a valid price.';
-          }
-          return null;
-        },
-      ),
-    );
-  }
+            const SizedBox(height: 20),
 
-  Widget _dropdown(
-    String label,
-    IconData icon,
-    String value,
-    List<String> values,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: DropdownButtonFormField<String>(
-        initialValue: value,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-        items: values
-            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-            .toList(),
-        onChanged: onChanged,
-      ),
-    );
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    final item = ItemModel(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      sellerId: AuthService.instance.currentUser!.id,
-      title: _name.text.trim(),
-      category: _category,
-      description: _description.text.trim(),
-      price: double.parse(_price.text.trim()),
-      condition: _condition,
-      imageLabel: _category
-          .substring(0, _category.length < 4 ? _category.length : 4)
-          .toUpperCase(),
-      meetupLocation: _location,
-      createdAt: DateTime.now(),
-      isFeatured: DatabaseService.instance.items.length.isEven,
-    );
-    await DatabaseService.instance.addItem(item);
-    _success.forward(from: 0);
-    _name.clear();
-    _description.clear();
-    _price.clear();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Row(
-          children: const [
-            Icon(Icons.check_circle_rounded, color: Colors.white),
-            SizedBox(width: 10),
-            Expanded(child: Text('Listing saved and added to marketplace.')),
+            ElevatedButton(
+              onPressed: _loading ? null : uploadItem,
+              child: Text(_loading ? "Uploading..." : "Upload Item"),
+            ),
           ],
         ),
       ),
