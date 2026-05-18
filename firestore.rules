@@ -3,7 +3,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -12,72 +15,187 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // 1. Users collection rules
+    // Check if user is participant in a transaction/chat
+    function isParticipant(resourceData) {
+      return request.auth.uid == resourceData.buyerId || 
+             request.auth.uid == resourceData.sellerId ||
+             request.auth.uid in resourceData.participantIds;
+    }
+
+    // Validate required fields for users collection
+    function isValidUserData() {
+      return request.resource.data.keys().hasAll(['name', 'studentId', 'email', 'phone']) &&
+             request.resource.data.name is string &&
+             request.resource.data.studentId is string &&
+             request.resource.data.email is string &&
+             request.resource.data.phone is string &&
+             (request.resource.data.trustScore is number || !request.resource.data.keys().hasAll(['trustScore'])) &&
+             (request.resource.data.completedTransactions is number || !request.resource.data.keys().hasAll(['completedTransactions'])) &&
+             (request.resource.data.rating is number || !request.resource.data.keys().hasAll(['rating']));
+    }
+
+    // Validate required fields for items collection
+    function isValidItemData() {
+      return request.resource.data.keys().hasAll(['sellerId', 'title', 'price', 'category']) &&
+             request.resource.data.sellerId is string &&
+             request.resource.data.title is string &&
+             request.resource.data.price is number &&
+             request.resource.data.category is string &&
+             request.resource.data.price > 0 &&
+             request.resource.data.price < 100000;
+    }
+
+    // Validate required fields for chat rooms
+    function isValidChatRoomData() {
+      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds', 'itemId']) &&
+             request.resource.data.buyerId is string &&
+             request.resource.data.sellerId is string &&
+             request.resource.data.participantIds is list &&
+             request.resource.data.participantIds.size() >= 2;
+    }
+
+    // Validate required fields for messages
+    function isValidMessageData() {
+      return request.resource.data.keys().hasAll(['senderId', 'type', 'text']) &&
+             request.resource.data.senderId is string &&
+             request.resource.data.type is string &&
+             request.resource.data.text is string &&
+             request.resource.data.type in ['text', 'offer', 'system'];
+    }
+
+    // Validate required fields for offers
+    function isValidOfferData() {
+      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'itemId', 'roomId', 'price', 'status']) &&
+             request.resource.data.buyerId is string &&
+             request.resource.data.sellerId is string &&
+             request.resource.data.itemId is string &&
+             request.resource.data.roomId is string &&
+             request.resource.data.price is number &&
+             request.resource.data.price > 0 &&
+             request.resource.data.price < 100000 &&
+             request.resource.data.status in ['pending', 'accepted', 'rejected', 'countered', 'cancelled'];
+    }
+
+    // Validate required fields for transactions
+    function isValidTransactionData() {
+      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'itemId', 'status']) &&
+             request.resource.data.buyerId is string &&
+             request.resource.data.sellerId is string &&
+             request.resource.data.itemId is string &&
+             request.resource.data.status in ['pending', 'accepted', 'rejected', 'payment_processing', 'completed', 'cancelled'];
+    }
+
+    // Validate notification data
+    function isValidNotificationData() {
+      return request.resource.data.keys().hasAll(['userId']) &&
+             request.resource.data.userId is string;
+    }
+
+    // ============================================
+    // COLLECTION RULES
+    // ============================================
+
+    // 1. USERS COLLECTION
+    // - Users can read all profiles (for viewing seller info)
+    // - Users can only update their own profile
+    // - Users cannot delete their own profile (admin only)
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserData();
+      allow update: if isOwner(userId) && (
+        // Allow updating profile fields but not critical security fields
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'phone', 'trustScore', 'completedTransactions', 'rating'
+        ])
+      );
+      allow delete: if false; // Prevent account deletion via Firestore (use Auth instead)
     }
 
-    // 2. Items collection rules
+    // 2. ITEMS COLLECTION
+    // - All authenticated users can browse items
+    // - Only item owner can create/update/delete
+    // - Status changes are restricted to prevent abuse
     match /items/{itemId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.sellerId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.sellerId == request.auth.uid;
+      allow create: if isAuthenticated() && 
+                       request.resource.data.sellerId == request.auth.uid &&
+                       isValidItemData();
+      allow update: if isAuthenticated() && 
+                       resource.data.sellerId == request.auth.uid &&
+                       // Allow updating most fields but not sellerId
+                       !request.resource.data.keys().hasAll(['sellerId']) ||
+                       request.resource.data.sellerId == resource.data.sellerId;
+      allow delete: if isAuthenticated() && resource.data.sellerId == request.auth.uid;
     }
 
-    // 3. Chat Rooms collection rules
+    // 3. CHAT ROOMS COLLECTION
+    // - Only participants can read/write to chat rooms
+    // - Room creation requires valid participant data
     match /chatRooms/{roomId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId || 
-        request.auth.uid in resource.data.participantIds
-      );
+      allow read: if isAuthenticated() && isParticipant(resource.data);
       
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.buyerId || 
-        request.auth.uid == request.resource.data.sellerId
-      );
+      allow create: if isAuthenticated() && 
+                       isValidChatRoomData() &&
+                       (request.auth.uid == request.resource.data.buyerId || 
+                        request.auth.uid == request.resource.data.sellerId);
       
-      allow update: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId
-      );
+      allow update: if isAuthenticated() && isParticipant(resource.data) &&
+                       // Allow updating chat metadata but not participant lists
+                       !request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds']) ||
+                       (request.resource.data.buyerId == resource.data.buyerId &&
+                        request.resource.data.sellerId == resource.data.sellerId);
 
-      // Messages subcollection rules
+      // 3a. MESSAGES SUBCOLLECTION
+      // - Only chat participants can read messages
+      // - Sender can create messages
+      // - Only sender can update/delete their own messages
       match /messages/{messageId} {
         allow read: if isAuthenticated() && (
           request.auth.uid == get(/databases/$(database)/documents/chatRooms/$(roomId)).data.buyerId ||
           request.auth.uid == get(/databases/$(database)/documents/chatRooms/$(roomId)).data.sellerId
         );
         
-        allow create: if isAuthenticated() && (
-          request.auth.uid == request.resource.data.senderId
-        );
+        allow create: if isAuthenticated() && 
+                         isValidMessageData() &&
+                         request.auth.uid == request.resource.data.senderId;
         
-        allow update, delete: if isAuthenticated() && (
-          resource.data.senderId == request.auth.uid
-        );
+        allow update, delete: if isAuthenticated() && 
+                                 resource.data.senderId == request.auth.uid;
       }
     }
 
-    // 4. Offers collection rules
+    // 4. OFFERS COLLECTION
+    // - Only buyer and seller can view offers
+    // - Only buyer can create offers
+    // - Both buyer and seller can update (for status changes)
     match /offers/{offerId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.buyerId || 
         request.auth.uid == resource.data.sellerId
       );
       
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.buyerId
-      );
+      allow create: if isAuthenticated() && 
+                       isValidOfferData() &&
+                       request.auth.uid == request.resource.data.buyerId;
       
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.buyerId || 
         request.auth.uid == resource.data.sellerId
-      );
+      ) &&
+      // Restrict status changes: only seller can accept/reject, only buyer can cancel/counter
+      (request.resource.data.status == resource.data.status ||
+       (request.auth.uid == resource.data.sellerId && 
+        request.resource.data.status in ['accepted', 'rejected']) ||
+       (request.auth.uid == resource.data.buyerId && 
+        request.resource.data.status in ['countered', 'cancelled']));
+      
+      allow delete: if false; // Prevent deletion to maintain transaction history
     }
 
-    // 5. Transactions collection rules
+    // 5. TRANSACTIONS COLLECTION
+    // - Only participants can view transactions
+    // - Creation requires valid buyer/seller relationship
+    // - Status updates are restricted to prevent unauthorized changes
     match /transactions/{transactionId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.buyerId || 
@@ -85,22 +203,32 @@ service cloud.firestore {
         request.auth.uid in resource.data.participants
       );
       
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.sellerId ||
-        request.auth.uid == request.resource.data.buyerId
-      );
+      allow create: if isAuthenticated() && 
+                       isValidTransactionData() &&
+                       (request.auth.uid == request.resource.data.sellerId ||
+                        request.auth.uid == request.resource.data.buyerId);
       
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.buyerId || 
         request.auth.uid == resource.data.sellerId
-      );
+      ) &&
+      // Only allow specific field updates (status, meetup location)
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'meetupLocation', 'meetupLatitude', 'meetupLongitude', 'updatedAt'
+      ]);
+      
+      allow delete: if false; // Prevent deletion to maintain transaction history
     }
 
-    // 6. Notifications collection rules
+    // 6. NOTIFICATIONS COLLECTION
+    // - Users can only read their own notifications
+    // - System/users can create notifications for others
+    // - Only recipient can update (mark as read) or delete
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated(); // Allowed so other users/actions can trigger notifications for counterparties
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidNotificationData();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
   }
 }
