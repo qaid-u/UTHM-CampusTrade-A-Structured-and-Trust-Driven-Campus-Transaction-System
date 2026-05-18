@@ -17,9 +17,9 @@ class OfferMessageCard extends StatefulWidget {
   const OfferMessageCard({
     super.key,
     required this.isMe,
-    required this.offerId,
     required this.roomId,
     required this.itemId,
+    required this.offerId,
     required this.itemTitle,
     required this.offerPrice,
     required this.status,
@@ -34,6 +34,30 @@ class OfferMessageCard extends StatefulWidget {
 
 class _OfferMessageCardState extends State<OfferMessageCard> {
   bool _isLoading = false;
+
+  Future<void> _handleOfferAction(String action) async {
+    setState(() => _isLoading = true);
+
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await OfferService.updateOfferStatus(
+        offerId: widget.offerId,
+        roomId: widget.roomId,
+        status: action,
+        actionUserId: userId,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update offer: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -153,59 +177,70 @@ class _OfferMessageCardState extends State<OfferMessageCard> {
                   Padding(
                     padding: const EdgeInsets.all(8),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         if (widget.isSeller) ...[
-                          TextButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () => _handleOfferAction('rejected'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _handleOfferAction('rejected'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(40),
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                              child: const Text('Reject'),
                             ),
-                            child: const Text('Reject'),
                           ),
-                          ElevatedButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () => _handleOfferAction('accepted'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _handleOfferAction('accepted'),
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(40),
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                : const Text('Accept'),
+                                    )
+                                  : const Text('Accept'),
+                            ),
                           ),
                         ] else if (widget.isBuyer) ...[
-                          TextButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () => _handleOfferAction('cancelled'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.red,
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _handleOfferAction('cancelled'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(40),
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.red,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                : const Text('Cancel Offer'),
+                                    )
+                                  : const Text('Cancel Offer'),
+                            ),
                           ),
                         ],
                       ],
@@ -225,29 +260,5 @@ class _OfferMessageCardState extends State<OfferMessageCard> {
         ),
       ],
     );
-  }
-
-  Future<void> _handleOfferAction(String action) async {
-    setState(() => _isLoading = true);
-
-    try {
-      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-      await OfferService.updateOfferStatus(
-        offerId: widget.offerId,
-        roomId: widget.roomId,
-        status: action,
-        actionUserId: userId,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update offer: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 }
