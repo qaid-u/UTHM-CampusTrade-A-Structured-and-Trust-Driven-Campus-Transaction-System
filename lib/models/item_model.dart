@@ -16,6 +16,8 @@ class ItemModel {
   final String category;
   final String condition;
   final String meetupLocation;
+  final double meetupLatitude;
+  final double meetupLongitude;
 
   // Images (optimized)
   final String thumbnail; // First image for fast feed loading
@@ -38,6 +40,8 @@ class ItemModel {
     required this.category,
     this.condition = '',
     this.meetupLocation = '',
+    this.meetupLatitude = 0.0,
+    this.meetupLongitude = 0.0,
     this.thumbnail = '',
     this.images = const [],
     this.status = 'available',
@@ -61,6 +65,8 @@ class ItemModel {
       category: json['category'] ?? '',
       condition: json['condition'] ?? '',
       meetupLocation: json['meetupLocation'] ?? '',
+      meetupLatitude: _readDouble(json['meetupLatitude']),
+      meetupLongitude: _readDouble(json['meetupLongitude']),
       thumbnail: json['thumbnail'] ?? (images.isNotEmpty ? images.first : ''),
       images: images,
       status: json['status'] ?? 'available',
@@ -86,6 +92,8 @@ class ItemModel {
       'category': category,
       'condition': condition,
       'meetupLocation': meetupLocation,
+      'meetupLatitude': meetupLatitude,
+      'meetupLongitude': meetupLongitude,
       'thumbnail': thumbnail,
       'images': images,
       'status': status,

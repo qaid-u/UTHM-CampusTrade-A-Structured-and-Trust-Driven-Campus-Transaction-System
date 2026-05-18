@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
@@ -44,6 +46,28 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  Future<void> _openDirections(
+    double latitude,
+    double longitude,
+    String locationName,
+  ) async {
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open maps application'),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = AuthService.instance.currentUser;
@@ -72,6 +96,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final price = (data['price'] ?? 0).toDouble();
         final sellerId = data['sellerId'] ?? '';
         final meetupLocation = data['meetupLocation'] ?? '';
+        final meetupLatitude = (data['meetupLatitude'] ?? 0.0).toDouble();
+        final meetupLongitude = (data['meetupLongitude'] ?? 0.0).toDouble();
+        final hasLocation = meetupLatitude != 0.0 && meetupLongitude != 0.0;
 
         /// 🔥 FIX: ALWAYS USE images[]
         final List images = data['images'] ?? [];
@@ -147,14 +174,94 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   const SizedBox(height: 16),
                 ],
 
-                if (meetupLocation.isNotEmpty)
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text(meetupLocation)),
-                    ],
+                if (meetupLocation.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ListTile(
+                          leading: Icon(
+                            Icons.location_on,
+                            color: hasLocation ? Colors.green : Colors.blue,
+                          ),
+                          title: Text(
+                            meetupLocation,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: hasLocation
+                              ? const Text('Tap for directions')
+                              : const Text('Campus meetup'),
+                        ),
+                        // OPTIMIZED: Only load map when coordinates exist
+                        if (hasLocation) ...[
+                          // Static map - lazy loaded only when scrolled into view
+                          SizedBox(
+                            height: 150,
+                            child: GoogleMap(
+                              // PERFORMANCE: Disable all gestures for static display
+                              gestureRecognizers: const {},
+                              initialCameraPosition: CameraPosition(
+                                target: LatLng(
+                                  meetupLatitude,
+                                  meetupLongitude,
+                                ),
+                                zoom: 15,
+                              ),
+                              markers: {
+                                Marker(
+                                  markerId: const MarkerId(
+                                    'item_pickup_location',
+                                  ),
+                                  position: LatLng(
+                                    meetupLatitude,
+                                    meetupLongitude,
+                                  ),
+                                  icon:
+                                      BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueGreen,
+                                  ),
+                                ),
+                              },
+                              // PERFORMANCE: Disable all interactive features
+                              zoomControlsEnabled: false,
+                              scrollGesturesEnabled: false,
+                              tiltGesturesEnabled: false,
+                              rotateGesturesEnabled: false,
+                              compassEnabled: false,
+                              mapToolbarEnabled: false,
+                              // PERFORMANCE: Use lite mode for faster loading
+                              liteModeEnabled: true,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _openDirections(
+                                  meetupLatitude,
+                                  meetupLongitude,
+                                  meetupLocation,
+                                ),
+                                icon: const Icon(Icons.directions),
+                                label: const Text('Get Directions'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
+                ],
 
                 const SizedBox(height: 20),
 

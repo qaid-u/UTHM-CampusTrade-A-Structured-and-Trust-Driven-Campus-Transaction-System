@@ -8,6 +8,7 @@ import '../services/storage_service.dart';
 import '../services/item_service.dart';
 import '../constants/app_defaults.dart';
 import '../widgets/feedback_helper.dart';
+import 'meetup_location_screen.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -25,6 +26,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final picker = ImagePicker();
 
   bool _loading = false;
+  
+  // Location picker state
+  String? _selectedMeetupLocation;
+  double? _meetupLatitude;
+  double? _meetupLongitude;
 
   Future<void> pickImage() async {
     if (_images.length >= 4) {
@@ -42,6 +48,23 @@ class _AddItemScreenState extends State<AddItemScreen> {
     setState(() {
       _images.add(bytes);
     });
+  }
+
+  Future<void> _pickMeetupLocation() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MeetupLocationScreen(),
+      ),
+    );
+
+    if (result != null && result is Map) {
+      setState(() {
+        _selectedMeetupLocation = result['location'] as String;
+        _meetupLatitude = result['latitude'] as double;
+        _meetupLongitude = result['longitude'] as double;
+      });
+    }
   }
 
   Future<void> uploadItem() async {
@@ -139,7 +162,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
         price: price,
         category: 'Others', // TODO: Add category picker
         condition: 'Used', // TODO: Add condition picker
-        meetupLocation: 'Library', // TODO: Add location picker
+        meetupLocation: _selectedMeetupLocation ?? 'Campus Meetup',
+        meetupLatitude: _meetupLatitude ?? 1.8538, // Default: UTHM center
+        meetupLongitude: _meetupLongitude ?? 103.0863,
         images: imageUrls,
       );
 
@@ -217,6 +242,34 @@ class _AddItemScreenState extends State<AddItemScreen> {
             TextField(
               controller: _desc,
               decoration: const InputDecoration(labelText: "Description"),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Meetup Location Picker
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.location_on,
+                  color: _selectedMeetupLocation != null
+                      ? Colors.green
+                      : Colors.blue,
+                ),
+                title: Text(
+                  _selectedMeetupLocation ?? 'Select pickup location',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _selectedMeetupLocation != null
+                        ? Colors.black87
+                        : Colors.grey[600],
+                  ),
+                ),
+                subtitle: _selectedMeetupLocation != null
+                    ? const Text('Tap to change location')
+                    : const Text('Recommended for faster transactions'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickMeetupLocation,
+              ),
             ),
 
             const SizedBox(height: 10),

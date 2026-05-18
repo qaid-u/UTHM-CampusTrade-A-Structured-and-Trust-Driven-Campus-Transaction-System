@@ -15,9 +15,11 @@ class MeetupLocationScreen extends StatefulWidget {
 class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
   GoogleMapController? _mapController;
   LatLng _selectedLatLng = const LatLng(1.8538, 103.0863); // Center of UTHM Campus
+  LatLng? _userLocation; // User's current GPS location
   String _selectedAddress = 'UTHM Parit Raja Campus';
   bool _isLocating = false;
   bool _isGeocoding = false;
+  double? _distanceFromUser; // Distance in kilometers
 
   // Predefined Safe Meetup Locations inside UTHM Campus
   static const List<Map<String, dynamic>> _presetLocations = [
@@ -66,13 +68,13 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
       if (permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse) {
         final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 5),
+          desiredAccuracy: LocationAccuracy.high, // TEMP: Keep for backward compat
         );
         final userLatLng = LatLng(position.latitude, position.longitude);
         if (mounted) {
           setState(() {
             _selectedLatLng = userLatLng;
+            _userLocation = userLatLng;
           });
         }
         _mapController?.animateCamera(
@@ -81,6 +83,7 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
           ),
         );
         await _reverseGeocode(userLatLng);
+        _calculateDistance();
       } else {
         // Fallback to library coordinates
         _selectPreset(_presetLocations.first);
@@ -148,6 +151,34 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
         CameraPosition(target: latLng, zoom: 16.5),
       ),
     );
+    _calculateDistance();
+  }
+
+  /// Calculate distance from user's current location to selected meetup point
+  void _calculateDistance() {
+    if (_userLocation != null) {
+      final distanceInMeters = Geolocator.distanceBetween(
+        _userLocation!.latitude,
+        _userLocation!.longitude,
+        _selectedLatLng.latitude,
+        _selectedLatLng.longitude,
+      );
+      setState(() {
+        _distanceFromUser = distanceInMeters / 1000; // Convert to km
+      });
+    }
+  }
+
+  /// Check if location is within UTHM campus boundary (1.5 km radius)
+  bool _isWithinCampus(LatLng location) {
+    const campusCenter = LatLng(1.8538, 103.0863);
+    final distanceInMeters = Geolocator.distanceBetween(
+      campusCenter.latitude,
+      campusCenter.longitude,
+      location.latitude,
+      location.longitude,
+    );
+    return distanceInMeters <= 1500; // 1.5 km radius
   }
 
   @override
@@ -185,10 +216,14 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             markers: {
+              // User's selected meetup point (Blue marker)
               Marker(
                 markerId: const MarkerId('meetup_pin'),
                 position: _selectedLatLng,
                 draggable: true,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueBlue,
+                ),
                 onDragEnd: (newPosition) {
                   setState(() => _selectedLatLng = newPosition);
                   _reverseGeocode(newPosition);
@@ -198,7 +233,20 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                   snippet: _selectedAddress,
                 ),
               ),
-            },
+              // Preset safe campus locations (Green markers)
+              ..._presetLocations.map((preset) => Marker(
+                    markerId: MarkerId('safe_${preset['name']}'),
+                    position: LatLng(preset['lat'] as double, preset['lng'] as double),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueGreen,
+                    ),
+                    infoWindow: InfoWindow(
+                      title: preset['name'] as String,
+                      snippet: preset['desc'] as String,
+                    ),
+                    onTap: () => _selectPreset(preset),
+                  )),
+            }.toSet(),
             onTap: (clickedLatLng) {
               setState(() => _selectedLatLng = clickedLatLng);
               _reverseGeocode(clickedLatLng);
@@ -247,6 +295,17 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                          if (_distanceFromUser != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_distanceFromUser!.toStringAsFixed(2)} km from your location',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -360,6 +419,20 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                         onPressed: _isGeocoding
                             ? null
                             : () {
+                                // Validate campus boundary
+                                if (!_isWithinCampus(_selectedLatLng)) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text(
+                                        'Please select a meetup location within UTHM campus boundaries (1.5 km radius)',
+                                      ),
+                                      backgroundColor: Colors.orange,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 // Pop and return selected meetup location data
                                 Navigator.pop(context, {
                                   'location': _selectedAddress,
