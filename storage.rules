@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 1. User profiles and avatars path rules
+    // Match files in path: /users/{userId}/avatar.jpg or /profile_pictures/{userId}/...
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024; // Limited to 5MB max
+    }
+
+    match /profile_pictures/{userId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024; // Limited to 5MB max
+    }
+
+    // 2. Item images / Product listing media rules
+    // Match files in path: /items/{itemId}/... or /item_images/{itemId}/...
+    match /items/{itemId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      // Allow writing if user is authenticated and uploads files under 10MB each
+      allow write: if isAuthenticated() && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    match /item_images/{itemId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 10 * 1024 * 1024; // Limited to 10MB max
+    }
+  }
+}
