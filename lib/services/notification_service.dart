@@ -105,8 +105,12 @@ class NotificationService {
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        // Filter by chatRoomId in code instead of query
-        if (data['chatRoomId'] == chatRoomId) {
+        final roomVal = data['chatRoomId'];
+        final typeVal = data['type'];
+        // Filter by chatRoomId in code instead of query.
+        // Also self-heal legacy notifications where chatRoomId was null
+        if (roomVal == chatRoomId ||
+            (roomVal == null && (typeVal == 'message' || typeVal == 'offer'))) {
           batch.update(doc.reference, {'isRead': true});
           markedCount++;
         }

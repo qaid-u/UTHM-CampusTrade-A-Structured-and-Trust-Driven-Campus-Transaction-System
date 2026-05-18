@@ -19,10 +19,17 @@ class ChatsScreen extends StatefulWidget {
 class _ChatsScreenState extends State<ChatsScreen> {
   int _unreadCount = 0;
   bool _initialLoadDone = false;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _chatRoomsStream;
 
   @override
   void initState() {
     super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _chatRoomsStream = _getChatRoomsStream(user.uid);
+    }
+
     // Load unread count after the first frame to prevent blocking
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUnreadCount();
@@ -105,7 +112,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         // Try query with index first, fallback to client-side filtering
-        stream: _getChatRoomsStream(user.uid),
+        stream: _chatRoomsStream,
         builder: (context, snapshot) {
           // Show brief loading indicator initially (200ms max)
           if (!_initialLoadDone && !snapshot.hasData) {

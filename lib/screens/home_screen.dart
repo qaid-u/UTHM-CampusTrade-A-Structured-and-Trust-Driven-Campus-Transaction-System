@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/item_model.dart';
+import '../models/notification_model.dart';
 import '../services/auth_service.dart';
 import '../services/app_config_service.dart';
 import '../services/notification_service.dart';
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Add debouncing to prevent rapid reloads
   bool _isReloading = false;
   DateTime? _lastLoadTime;
+  Stream<List<NotificationModel>>? _notificationsStream;
 
   final categories = const [
     'Textbooks',
@@ -46,6 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    final user = AuthService.instance.currentUser;
+    if (user != null) {
+      _notificationsStream = NotificationService.instance.getUserNotifications(user.uid);
+    }
     // Load items after the first frame to prevent blocking
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadItems();
@@ -552,7 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _notificationButton(String userId) {
     return StreamBuilder(
-      stream: NotificationService.instance.getUserNotifications(userId),
+      stream: _notificationsStream,
       builder: (context, snapshot) {
         final list = snapshot.data ?? [];
 

@@ -8,10 +8,26 @@ import '../services/offer_service.dart';
 import '../models/user_model.dart';
 import 'chat_screen.dart';
 
-class ItemDetailScreen extends StatelessWidget {
+class ItemDetailScreen extends StatefulWidget {
   const ItemDetailScreen({super.key, required this.itemId});
 
   final String itemId;
+
+  @override
+  State<ItemDetailScreen> createState() => _ItemDetailScreenState();
+}
+
+class _ItemDetailScreenState extends State<ItemDetailScreen> {
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _itemStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _itemStream = FirebaseFirestore.instance
+        .collection('items')
+        .doc(widget.itemId)
+        .snapshots();
+  }
 
   Future<UserModel?> _getSeller(String sellerId) async {
     try {
@@ -37,10 +53,7 @@ class ItemDetailScreen extends StatelessWidget {
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('items')
-          .doc(itemId)
-          .snapshots(),
+      stream: _itemStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -192,7 +205,7 @@ class ItemDetailScreen extends StatelessWidget {
                         child: OutlinedButton(
                           onPressed: () async {
                             final roomId = await ChatService.getOrCreateRoom(
-                              itemId: itemId,
+                              itemId: widget.itemId,
                               itemTitle: title,
                               itemThumbnail: images.isNotEmpty
                                   ? images.first.toString()
@@ -263,7 +276,7 @@ class ItemDetailScreen extends StatelessWidget {
     final itemThumbnail = images.isNotEmpty ? images.first.toString() : '';
 
     final roomId = await ChatService.getOrCreateRoom(
-      itemId: itemId,
+      itemId: widget.itemId,
       itemTitle: title,
       itemThumbnail: itemThumbnail,
       buyerId: currentUser.uid,
@@ -272,7 +285,7 @@ class ItemDetailScreen extends StatelessWidget {
 
     await OfferService.createOffer(
       roomId: roomId,
-      itemId: itemId,
+      itemId: widget.itemId,
       itemTitle: title,
       buyerId: currentUser.uid,
       sellerId: sellerId,
@@ -283,6 +296,9 @@ class ItemDetailScreen extends StatelessWidget {
       userId: sellerId,
       title: "New Offer",
       body: "RM ${result.toStringAsFixed(2)}",
+      type: 'offer',
+      itemId: widget.itemId,
+      chatRoomId: roomId,
     );
 
     if (!context.mounted) return;

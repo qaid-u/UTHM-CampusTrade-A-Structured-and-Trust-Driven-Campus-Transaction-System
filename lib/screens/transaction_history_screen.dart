@@ -7,8 +7,29 @@ import '../services/notification_service.dart';
 import '../services/transaction_service.dart';
 import '../widgets/status_badge.dart';
 
-class TransactionHistoryScreen extends StatelessWidget {
+class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
+
+  @override
+  State<TransactionHistoryScreen> createState() => _TransactionHistoryScreenState();
+}
+
+class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _transactionsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = AuthService.instance.currentUser;
+    if (user != null) {
+      _transactionsStream = FirebaseFirestore.instance
+          .collection('transactions')
+          .where('participants', arrayContains: user.uid)
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .snapshots();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,12 +42,7 @@ class TransactionHistoryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Transactions')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('transactions')
-            .where('participants', arrayContains: user.uid)
-            .orderBy('createdAt', descending: true)
-            .limit(50)
-            .snapshots(),
+        stream: _transactionsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text('Unable to load transactions.'));
@@ -163,6 +179,9 @@ class TransactionHistoryScreen extends StatelessWidget {
             userId: buyerId,
             title: status == 'accepted' ? 'Offer accepted' : 'Offer rejected',
             body: 'Your offer for $itemTitle was $status.',
+            type: 'offer',
+            itemId: txData['itemId'],
+            chatRoomId: roomId,
           );
         }
       } else if (status == 'completed') {
@@ -172,6 +191,9 @@ class TransactionHistoryScreen extends StatelessWidget {
             userId: recipientId,
             title: 'Transaction completed',
             body: 'The transaction for $itemTitle was marked completed.',
+            type: 'transaction',
+            itemId: txData['itemId'],
+            chatRoomId: roomId,
           );
         }
       }

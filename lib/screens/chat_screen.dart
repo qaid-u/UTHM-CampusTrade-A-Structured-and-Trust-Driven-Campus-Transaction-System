@@ -25,6 +25,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sellerId;
   String? _buyerId;
   String? _itemTitle;
+  String? _itemId;
 
   String? _otherUserName;
   String? _itemStatus;
@@ -97,6 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _sellerId = sellerId;
           _buyerId = buyerId;
           _itemTitle = itemTitle;
+          _itemId = itemId;
         });
 
         // 2. Fetch User Info & Item Status asynchronously with short timeouts
@@ -212,6 +214,9 @@ class _ChatScreenState extends State<ChatScreen> {
         body: _itemTitle != null
             ? '$_itemTitle: ${messageText.length > 50 ? '${messageText.substring(0, 50)}...' : messageText}'
             : messageText,
+        type: 'message',
+        chatRoomId: widget.roomId,
+        itemId: _itemId,
       );
 
       debugPrint('Notification sent to user: $recipientId');

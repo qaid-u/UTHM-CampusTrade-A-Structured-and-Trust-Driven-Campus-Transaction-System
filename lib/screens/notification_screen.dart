@@ -5,8 +5,24 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 
-class NotificationScreen extends StatelessWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
+
+  @override
+  State<NotificationScreen> createState() => _NotificationScreenState();
+}
+
+class _NotificationScreenState extends State<NotificationScreen> {
+  Stream<List<NotificationModel>>? _notificationsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = AuthService.instance.currentUser;
+    if (user != null) {
+      _notificationsStream = NotificationService.instance.getUserNotifications(user.uid);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +35,7 @@ class NotificationScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
       body: StreamBuilder<List<NotificationModel>>(
-        stream: NotificationService.instance.getUserNotifications(user.uid),
+        stream: _notificationsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text('Unable to load notifications.'));
