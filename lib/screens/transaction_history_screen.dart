@@ -90,7 +90,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                         Text('Meetup: ${tx.meetupLocation}'),
                       const SizedBox(height: 10),
                       if (tx.sellerId == user.uid &&
-                          tx.status == TransactionStatus.pending)
+                          tx.status == TransactionStatus.pending_offer)
                         Row(
                           children: [
                             FilledButton(
@@ -141,17 +141,46 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () =>
-                                    _update(tx.id, 'payment_processing', user.uid),
-                                child: const Text('Simulate Pay', style: TextStyle(fontSize: 12)),
+                                    _update(tx.id, 'meetup_pending', user.uid),
+                                child: const Text('Confirm Meetup', style: TextStyle(fontSize: 12)),
                               ),
                             ),
                           ],
                         ),
-                      if (tx.status == TransactionStatus.payment_processing)
-                        FilledButton(
-                          onPressed: () =>
-                              _update(tx.id, 'completed', user.uid),
-                          child: const Text('Complete Transaction'),
+                      if (tx.status == TransactionStatus.meetup_pending)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (tx.buyerId == user.uid)
+                              FilledButton(
+                                onPressed: () =>
+                                    _update(tx.id, 'completed', user.uid),
+                                child: const Text('Confirm Item Received'),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Awaiting buyer to confirm receipt',
+                                  style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _update(tx.id, 'cancelled', user.uid),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                              child: const Text('Cancel Deal'),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -196,7 +225,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
     final newStatus = TransactionStatus.values.firstWhere(
       (e) => e.name == status,
-      orElse: () => TransactionStatus.pending,
+      orElse: () => TransactionStatus.pending_offer,
     );
 
     try {

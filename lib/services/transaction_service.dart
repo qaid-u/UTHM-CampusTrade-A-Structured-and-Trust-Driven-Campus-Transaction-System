@@ -144,7 +144,51 @@ class TransactionService {
         );
     final itemTitle = itemDoc.data()?['title'] ?? 'Item';
 
+    // FIX: Ghost Offer Loophole - Automatically reject all other pending offers for this item
+    final otherOffers = await FirebaseFirestore.instance
+        .collection('offers')
+        .where('itemId', isEqualTo: itemId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    final List<Future<void>> rejectionTasks = [];
+
+    for (final doc in otherOffers.docs) {
+      if (doc.id != offerId) {
+        batch.update(doc.reference, {
+          'status': 'rejected',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        final otherRoomId = doc.data()['roomId'] as String?;
+        if (otherRoomId != null) {
+          final otherMsgs = await FirebaseFirestore.instance
+              .collection('chatRooms')
+              .doc(otherRoomId)
+              .collection('messages')
+              .where('offerId', isEqualTo: doc.id)
+              .limit(1)
+              .get();
+
+          if (otherMsgs.docs.isNotEmpty) {
+            batch.update(
+                otherMsgs.docs.first.reference, {'offerStatus': 'rejected'});
+          }
+
+          rejectionTasks.add(
+            ChatService.sendMessage(
+              roomId: otherRoomId,
+              senderId: actionUserId,
+              type: 'system',
+              text: 'Offer rejected: Item sold to another buyer.',
+            ),
+          );
+        }
+      }
+    }
+
     await batch.commit();
+    await Future.wait(rejectionTasks);
 
     // Send "Offer accepted" system message
     await ChatService.sendMessage(
@@ -160,9 +204,9 @@ class TransactionService {
   }
 
   /// Strict transition of transaction state
-  /// pending -> accepted -> payment_processing -> completed
+  /// pending_offer -> accepted -> meetup_pending -> completed
   /// OR
-  /// pending -> rejected -> cancelled
+  /// pending_offer -> rejected -> cancelled
   Future<void> updateTransactionStatus({
     required String transactionId,
     required TransactionStatus newStatus,
@@ -181,17 +225,17 @@ class TransactionService {
 
     // Validate strict state transition rule
     bool isValid = false;
-    if (currentStatus == TransactionStatus.pending) {
+    if (currentStatus == TransactionStatus.pending_offer) {
       if (newStatus == TransactionStatus.accepted ||
           newStatus == TransactionStatus.rejected) {
         isValid = true;
       }
     } else if (currentStatus == TransactionStatus.accepted) {
-      if (newStatus == TransactionStatus.payment_processing ||
+      if (newStatus == TransactionStatus.meetup_pending ||
           newStatus == TransactionStatus.cancelled) {
         isValid = true;
       }
-    } else if (currentStatus == TransactionStatus.payment_processing) {
+    } else if (currentStatus == TransactionStatus.meetup_pending) {
       if (newStatus == TransactionStatus.completed ||
           newStatus == TransactionStatus.cancelled) {
         isValid = true;
@@ -204,27 +248,43 @@ class TransactionService {
       );
     }
 
-    await txRef.update({
+    final batch = FirebaseFirestore.instance.batch();
+    
+    batch.update(txRef, {
       'status': newStatus.name,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
+    // FIX: Ghosting Lockout - Reset item to available if transaction is cancelled
+    if (newStatus == TransactionStatus.cancelled) {
+      final itemRef = FirebaseFirestore.instance.collection('items').doc(tx.itemId);
+      batch.update(itemRef, {'status': 'available'});
+    }
+
+    await batch.commit();
+
     String systemText = '';
+    String msgType = 'system';
     switch (newStatus) {
       case TransactionStatus.accepted:
         systemText = 'Offer accepted';
+        msgType = 'system';
         break;
       case TransactionStatus.rejected:
         systemText = 'Offer rejected';
+        msgType = 'system';
         break;
-      case TransactionStatus.payment_processing:
-        systemText = 'Payment processing (dummy)';
+      case TransactionStatus.meetup_pending:
+        systemText = 'Meetup scheduled';
+        msgType = 'transaction_update';
         break;
       case TransactionStatus.completed:
         systemText = 'Transaction completed';
+        msgType = 'transaction_update';
         break;
       case TransactionStatus.cancelled:
         systemText = 'Transaction cancelled';
+        msgType = 'transaction_update';
         break;
       default:
         break;
@@ -234,7 +294,7 @@ class TransactionService {
       await ChatService.sendMessage(
         roomId: roomId,
         senderId: actionUserId,
-        type: 'system',
+        type: msgType,
         text: systemText,
       );
     }

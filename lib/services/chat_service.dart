@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/chat_room_model.dart';
 import '../models/message_model.dart';
 
@@ -34,7 +35,9 @@ class ChatService {
       const Duration(seconds: 3),
       onTimeout: () => throw Exception('Timeout fetching chat room info'),
     );
+    
     if (!doc.exists) {
+      debugPrint('🆕 Creating new chat room: $roomId');
       final room = ChatRoomModel(
         roomId: roomId,
         itemId: itemId,
@@ -48,8 +51,11 @@ class ChatService {
         updatedAt: DateTime.now(),
         unreadCounts: {buyerId: 0, sellerId: 0},
       );
-      await ref.set(room.toFirestore(), SetOptions(merge: true));
+      // CRITICAL: Use set() WITHOUT merge for new documents to trigger 'allow create' rule
+      await ref.set(room.toFirestore());
+      debugPrint('✅ Chat room created successfully');
     } else {
+      debugPrint('🔄 Chat room exists, updating metadata');
       // Update item title and thumbnail in case they changed
       await ref.update({
         'itemTitle': itemTitle,
@@ -70,6 +76,11 @@ class ChatService {
     String? offerStatus,
     String? itemId,
   }) async {
+    debugPrint('💬 ChatService.sendMessage called');
+    debugPrint('  - roomId: $roomId');
+    debugPrint('  - senderId: $senderId');
+    debugPrint('  - type: $type');
+    
     final msgRef = _db
         .collection('chatRooms')
         .doc(roomId)
@@ -88,6 +99,8 @@ class ChatService {
       itemId: itemId,
     );
 
+    debugPrint('  - message data: ${msg.toFirestore()}');
+
     final batch = _db.batch();
 
     batch.set(msgRef, msg.toFirestore());
@@ -105,8 +118,11 @@ class ChatService {
       updateData['latestOfferId'] = offerId;
     }
 
+    debugPrint('  - updating room with: $updateData');
+
     batch.set(roomRef, updateData, SetOptions(merge: true));
 
     await batch.commit();
+    debugPrint('✅ ChatService.sendMessage completed');
   }
 }

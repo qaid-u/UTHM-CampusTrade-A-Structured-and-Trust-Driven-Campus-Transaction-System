@@ -9,10 +9,10 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (status) {
-      TransactionStatus.pending => Colors.orange,
+      TransactionStatus.pending_offer => Colors.orange,
       TransactionStatus.accepted => Colors.blue,
       TransactionStatus.rejected => Colors.red,
-      TransactionStatus.payment_processing => Colors.purple,
+      TransactionStatus.meetup_pending => Colors.purple,
       TransactionStatus.completed => Colors.green,
       TransactionStatus.cancelled => Colors.grey,
     };

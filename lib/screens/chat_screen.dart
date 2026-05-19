@@ -18,7 +18,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
-  final user = FirebaseAuth.instance.currentUser;
+  User? user;
   bool _sending = false;
 
   String? _sellerId;
@@ -33,6 +33,13 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // CRITICAL: Initialize user after auth is ready
+    user = FirebaseAuth.instance.currentUser;
+    
+    if (user == null) {
+      debugPrint('⚠️ ChatScreen: User not authenticated');
+    }
+    
     _messagesStream = FirebaseFirestore.instance
         .collection('chatRooms')
         .doc(widget.roomId)
@@ -142,19 +149,36 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || user == null || _sending) return;
+    if (text.isEmpty || _sending) return;
+    
+    // CRITICAL: Check if user is authenticated
+    if (user == null) {
+      debugPrint('❌ ChatScreen: Cannot send message - user not authenticated');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Authentication required. Please log in again.")),
+        );
+      }
+      return;
+    }
 
     setState(() => _sending = true);
     _controller.clear();
 
     try {
+      debugPrint('📤 Sending message from user: ${user!.uid}');
+      debugPrint('📝 Room ID: ${widget.roomId}');
+      
       await ChatService.sendMessage(
         roomId: widget.roomId,
         senderId: user!.uid,
         text: text,
         type: 'text',
       );
+      
+      debugPrint('✅ Message sent successfully');
     } catch (e) {
+      debugPrint('❌ Failed to send message: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed to send message: $e")),

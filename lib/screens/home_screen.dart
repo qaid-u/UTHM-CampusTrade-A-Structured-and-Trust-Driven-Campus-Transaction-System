@@ -48,13 +48,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final user = AuthService.instance.currentUser;
-    if (user != null) {
-      _notificationsStream = NotificationService.instance.getUserNotifications(user.uid);
-    }
-    // Load items after the first frame to prevent blocking
+    // OPTIMIZED: Wait for first frame, then check auth before loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadItems();
+      final user = AuthService.instance.currentUser;
+      if (user != null) {
+        // Only initialize notifications if user is authenticated
+        _notificationsStream = NotificationService.instance.getUserNotifications(user.uid);
+        // Load items for authenticated user
+        _loadItems();
+      } else {
+        // User not authenticated yet, show loading
+        if (mounted) {
+          setState(() {
+            _loading = true;
+          });
+        }
+      }
     });
   }
 
@@ -65,6 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadItems({bool refresh = false}) async {
+    // CRITICAL: Check if user is authenticated before making Firestore calls
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      debugPrint('⚠️ User not authenticated, skipping item load');
+      return;
+    }
+
     // Prevent rapid successive calls (debounce) - but allow first load
     final now = DateTime.now();
     if (_lastLoadTime != null &&
@@ -99,8 +115,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final batchSize = 15;
 
       debugPrint(
-        'Loading items: refresh=$refresh, category=$_category, location=$_meetupLocation',
+        '🔍 Loading items: refresh=$refresh, category=$_category, location=$_meetupLocation',
       );
+      debugPrint('👤 User: ${user.uid}');
+
 
       // Add timeout to prevent hanging
       final result = await ItemService.instance
@@ -151,7 +169,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _isReloading = false;
       });
 
-      debugPrint('Error loading items: $e');
+      // DETAILED ERROR LOGGING
+      debugPrint('❌ Error loading items: $e');
+      debugPrint('Error type: ${e.runtimeType}');
+      if (e.toString().contains('permission-denied')) {
+        debugPrint('🔒 PERMISSION DENIED - Check:');
+        debugPrint('  1. User authenticated: ${user.uid}');
+        debugPrint('  2. Firestore rules deployed');
+        debugPrint('  3. Rules allow read on items collection');
+      }
 
       // Show user-friendly error message
       if (_items.isEmpty) {
