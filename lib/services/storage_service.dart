@@ -164,4 +164,31 @@ class StorageService {
       throw Exception("Failed to delete item images: $e");
     }
   }
+  /// ---------------------------
+  /// CHAT RECEIPT IMAGES
+  /// ---------------------------
+  Future<String> uploadChatImage({
+    required String roomId,
+    required Uint8List bytes,
+  }) async {
+    if (bytes.isEmpty) throw Exception("Empty image data");
+
+    // Compress to save storage/bandwidth on receipts
+    final compressed = _compressImage(bytes);
+    final fileName = 'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = _storage.ref().child('chats/$roomId/$fileName');
+
+    try {
+      final uploadTask = await ref.putData(
+        compressed,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      if (uploadTask.state != TaskState.success) {
+        throw Exception("Chat image upload failed");
+      }
+      return await ref.getDownloadURL();
+    } catch (e) {
+      throw Exception("Chat image upload error: $e");
+    }
+  }
 }

@@ -148,6 +148,7 @@ class TransactionService {
     final otherOffers = await FirebaseFirestore.instance
         .collection('offers')
         .where('itemId', isEqualTo: itemId)
+        .where('sellerId', isEqualTo: actionUserId)
         .where('status', isEqualTo: 'pending')
         .get();
 
@@ -175,14 +176,16 @@ class TransactionService {
                 otherMsgs.docs.first.reference, {'offerStatus': 'rejected'});
           }
 
-          rejectionTasks.add(
-            ChatService.sendMessage(
-              roomId: otherRoomId,
-              senderId: actionUserId,
-              type: 'system',
-              text: 'Offer rejected: Item sold to another buyer.',
-            ),
-          );
+          if (otherRoomId != roomId) {
+            rejectionTasks.add(
+              ChatService.sendMessage(
+                roomId: otherRoomId,
+                senderId: actionUserId,
+                type: 'system',
+                text: 'Offer rejected: Item sold to another buyer.',
+              ),
+            );
+          }
         }
       }
     }
@@ -279,8 +282,8 @@ class TransactionService {
         msgType = 'transaction_update';
         break;
       case TransactionStatus.completed:
-        systemText = 'Transaction completed';
-        msgType = 'transaction_update';
+        systemText = 'Transaction completed! Tap here to leave a review.';
+        msgType = 'rating_prompt';
         break;
       case TransactionStatus.cancelled:
         systemText = 'Transaction cancelled';

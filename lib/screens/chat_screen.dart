@@ -6,6 +6,9 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/offer_message_card.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/storage_service.dart';
+import '../services/review_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -147,6 +150,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    if (user == null) return;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (picked == null) return;
+
+      setState(() => _sending = true);
+      final bytes = await picked.readAsBytes();
+      
+      final imageUrl = await StorageService.instance.uploadChatImage(
+        roomId: widget.roomId,
+        bytes: bytes,
+      );
+
+      await ChatService.sendMessage(
+        roomId: widget.roomId,
+        senderId: user!.uid,
+        text: imageUrl,
+        type: 'image',
+      );
+
+    } catch (e) {
+      debugPrint('Error picking/uploading image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send image: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Future<void> sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
@@ -202,6 +237,105 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _showReviewDialog() async {
+    int rating = 5;
+    final reviewController = TextEditingController();
+    bool submitting = false;
+
+    // Fetch the transaction ID from the chat room metadata
+    final roomDoc = await FirebaseFirestore.instance.collection('chatRooms').doc(widget.roomId).get();
+    final transactionId = roomDoc.data()?['transactionId'];
+
+    if (transactionId == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Transaction not found.')));
+      return;
+    }
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Leave a Review'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Rate your experience out of 5 stars:'),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < rating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 32,
+                        ),
+                        onPressed: () {
+                          setDialogState(() {
+                            rating = index + 1;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: reviewController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Any comments? (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: submitting ? null : () async {
+                    setDialogState(() => submitting = true);
+                    try {
+                      final targetUserId = (user!.uid == _buyerId) ? _sellerId! : _buyerId!;
+                      await ReviewService.submitReview(
+                        transactionId: transactionId,
+                        reviewerId: user!.uid,
+                        revieweeId: targetUserId,
+                        rating: rating,
+                        comment: reviewController.text.trim(),
+                      );
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Review submitted! This will be public once both parties review.'))
+                        );
+                      }
+                    } catch (e) {
+                      setDialogState(() => submitting = false);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                      }
+                    }
+                  },
+                  child: submitting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Submit'),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
@@ -324,6 +458,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         text: text,
                         time: timeStr,
                         type: type,
+                        onReviewTap: type == 'rating_prompt' ? () => _showReviewDialog() : null,
                       );
                     },
                   );
@@ -335,6 +470,10 @@ class _ChatScreenState extends State<ChatScreen> {
               color: Colors.white,
               child: Row(
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.image_outlined, color: Colors.blue),
+                    onPressed: _sending ? null : _pickImage,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
