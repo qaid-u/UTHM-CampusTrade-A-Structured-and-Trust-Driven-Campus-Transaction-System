@@ -11,6 +11,8 @@ enum TransactionStatus {
 
 class TransactionModel {
   final String id;
+  final String offerId;
+  final String roomId;
   final String itemId;
   final String itemTitle;
   final String buyerId;
@@ -18,6 +20,17 @@ class TransactionModel {
   final double offerPrice;
   final double finalPrice;
   final double platformFee;
+  final String paymentMethod;
+  final String paymentReference;
+  final String paymentStatus;
+  final String paymentProofUrl;
+  final String cancelReason;
+  final String issueReason;
+  final String issueStatus;
+  final double buyerRating;
+  final double sellerRating;
+  final String buyerReview;
+  final String sellerReview;
   final String meetupLocation;
   final double meetupLatitude;
   final double meetupLongitude;
@@ -27,6 +40,8 @@ class TransactionModel {
 
   TransactionModel({
     required this.id,
+    this.offerId = '',
+    this.roomId = '',
     required this.itemId,
     this.itemTitle = '',
     required this.buyerId,
@@ -34,6 +49,17 @@ class TransactionModel {
     required this.offerPrice,
     required this.finalPrice,
     required this.platformFee,
+    this.paymentMethod = '',
+    this.paymentReference = '',
+    this.paymentStatus = '',
+    this.paymentProofUrl = '',
+    this.cancelReason = '',
+    this.issueReason = '',
+    this.issueStatus = '',
+    this.buyerRating = 0.0,
+    this.sellerRating = 0.0,
+    this.buyerReview = '',
+    this.sellerReview = '',
     this.meetupLocation = '',
     this.meetupLatitude = 0.0,
     this.meetupLongitude = 0.0,
@@ -53,6 +79,8 @@ class TransactionModel {
 
     return TransactionModel(
       id: json['id'] ?? json['transactionId'] ?? '',
+      offerId: json['offerId'] ?? json['id'] ?? json['transactionId'] ?? '',
+      roomId: json['roomId'] ?? '',
       itemId: json['itemId'] ?? '',
       itemTitle: json['itemTitle'] ?? '',
       buyerId: json['buyerId'] ?? '',
@@ -60,6 +88,17 @@ class TransactionModel {
       offerPrice: offerPrice,
       finalPrice: finalPrice,
       platformFee: platformFee,
+      paymentMethod: json['paymentMethod'] ?? '',
+      paymentReference: json['paymentReference'] ?? '',
+      paymentStatus: json['paymentStatus'] ?? '',
+      paymentProofUrl: json['paymentProofUrl'] ?? '',
+      cancelReason: json['cancelReason'] ?? '',
+      issueReason: json['issueReason'] ?? '',
+      issueStatus: json['issueStatus'] ?? '',
+      buyerRating: _readDouble(json['buyerRating']),
+      sellerRating: _readDouble(json['sellerRating']),
+      buyerReview: json['buyerReview'] ?? '',
+      sellerReview: json['sellerReview'] ?? '',
       meetupLocation: json['meetupLocation'] ?? '',
       meetupLatitude: _readDouble(json['meetupLatitude']),
       meetupLongitude: _readDouble(json['meetupLongitude']),
@@ -80,6 +119,8 @@ class TransactionModel {
   Map<String, dynamic> toFirestore() {
     return {
       'transactionId': id,
+      'offerId': offerId.isNotEmpty ? offerId : id,
+      'roomId': roomId,
       'itemId': itemId,
       'itemTitle': itemTitle,
       'buyerId': buyerId,
@@ -88,6 +129,17 @@ class TransactionModel {
       'offerPrice': offerPrice,
       'finalPrice': finalPrice,
       'platformFee': platformFee,
+      'paymentMethod': paymentMethod,
+      'paymentReference': paymentReference,
+      'paymentStatus': paymentStatus,
+      'paymentProofUrl': paymentProofUrl,
+      'cancelReason': cancelReason,
+      'issueReason': issueReason,
+      'issueStatus': issueStatus,
+      'buyerRating': buyerRating,
+      'sellerRating': sellerRating,
+      'buyerReview': buyerReview,
+      'sellerReview': sellerReview,
       'meetupLocation': meetupLocation,
       'meetupLatitude': meetupLatitude,
       'meetupLongitude': meetupLongitude,

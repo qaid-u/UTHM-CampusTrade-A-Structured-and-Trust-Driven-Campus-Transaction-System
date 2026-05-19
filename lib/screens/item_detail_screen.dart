@@ -6,6 +6,7 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_service.dart';
 import '../models/user_model.dart';
+import '../widgets/item_image.dart';
 import 'chat_screen.dart';
 
 class ItemDetailScreen extends StatefulWidget {
@@ -72,9 +73,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final price = (data['price'] ?? 0).toDouble();
         final sellerId = data['sellerId'] ?? '';
         final meetupLocation = data['meetupLocation'] ?? '';
+        final status = data['status']?.toString() ?? 'available';
 
         /// 🔥 FIX: ALWAYS USE images[]
         final List images = data['images'] ?? [];
+        final List imagePaths = data['imagePaths'] ?? [];
+        final storageBucket = data['storageBucket']?.toString() ?? '';
 
         final isOwner = currentUser.uid == sellerId;
 
@@ -97,18 +101,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   ),
                   clipBehavior: Clip.antiAlias,
 
-                  child: images.isEmpty
+                  child: images.isEmpty && imagePaths.isEmpty
                       ? const Center(child: Icon(Icons.image_not_supported))
                       : PageView.builder(
-                          itemCount: images.length,
+                          itemCount: images.isNotEmpty
+                              ? images.length
+                              : imagePaths.length,
                           itemBuilder: (context, index) {
-                            final url = images[index];
+                            final url = images.isNotEmpty
+                                ? images[index].toString()
+                                : '';
+                            final path = index < imagePaths.length
+                                ? imagePaths[index].toString()
+                                : '';
 
-                            return Image.network(
-                              url,
+                            return ItemImage(
+                              urls: [url],
+                              paths: [path],
+                              storageBucket: storageBucket,
+                              height: 260,
+                              width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  const Icon(Icons.broken_image),
                             );
                           },
                         ),
@@ -191,6 +204,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 // ---------------- ACTIONS ----------------
                 if (isOwner)
                   const Center(child: Text("This is your listing"))
+                else if (status != 'available')
+                  Center(
+                    child: FilledButton.tonalIcon(
+                      onPressed: null,
+                      icon: const Icon(Icons.lock_outline),
+                      label: Text("Item ${status.toUpperCase()}"),
+                    ),
+                  )
                 else
                   Row(
                     children: [
@@ -204,24 +225,31 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () async {
-                            final roomId = await ChatService.getOrCreateRoom(
-                              itemId: widget.itemId,
-                              itemTitle: title,
-                              itemThumbnail: images.isNotEmpty
-                                  ? images.first.toString()
-                                  : '',
-                              buyerId: currentUser.uid,
-                              sellerId: sellerId,
-                            );
+                            try {
+                              final roomId = await ChatService.getOrCreateRoom(
+                                itemId: widget.itemId,
+                                itemTitle: title,
+                                itemThumbnail: images.isNotEmpty
+                                    ? images.first.toString()
+                                    : '',
+                                buyerId: currentUser.uid,
+                                sellerId: sellerId,
+                              );
 
-                            if (!context.mounted) return;
+                              if (!context.mounted) return;
 
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(roomId: roomId),
-                              ),
-                            );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(roomId: roomId),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Unable to open chat: $e')),
+                              );
+                            }
                           },
                           child: const Text("Chat"),
                         ),
@@ -248,7 +276,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         title: const Text("Make Offer"),
         content: TextField(
           controller: controller,
-          keyboardType: TextInputType.number,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Offer price',
+            prefixText: 'RM ',
+          ),
         ),
         actions: [
           TextButton(
@@ -265,47 +297,77 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       ),
     );
 
+    controller.dispose();
     if (result == null) return;
+    if (result <= 0) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Offer price must be greater than 0.')),
+      );
+      return;
+    }
 
     final currentUser = AuthService.instance.currentUser!;
     final title = item['title'] ?? 'Untitled';
-    final sellerId = item['sellerId'];
+    final sellerId = item['sellerId']?.toString() ?? '';
+    final status = item['status']?.toString() ?? 'available';
+
+    if (currentUser.uid == sellerId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot make an offer on your own item.')),
+      );
+      return;
+    }
+
+    if (status != 'available') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This item is no longer accepting offers.')),
+      );
+      return;
+    }
 
     // 🔥 Extract first image for thumbnail safely
     final List images = item['images'] ?? [];
     final itemThumbnail = images.isNotEmpty ? images.first.toString() : '';
 
-    final roomId = await ChatService.getOrCreateRoom(
-      itemId: widget.itemId,
-      itemTitle: title,
-      itemThumbnail: itemThumbnail,
-      buyerId: currentUser.uid,
-      sellerId: sellerId,
-    );
+    try {
+      final roomId = await ChatService.getOrCreateRoom(
+        itemId: widget.itemId,
+        itemTitle: title,
+        itemThumbnail: itemThumbnail,
+        buyerId: currentUser.uid,
+        sellerId: sellerId,
+      );
 
-    await OfferService.createOffer(
-      roomId: roomId,
-      itemId: widget.itemId,
-      itemTitle: title,
-      buyerId: currentUser.uid,
-      sellerId: sellerId,
-      price: result,
-    );
+      await OfferService.createOffer(
+        roomId: roomId,
+        itemId: widget.itemId,
+        itemTitle: title,
+        buyerId: currentUser.uid,
+        sellerId: sellerId,
+        price: result,
+      );
 
-    await NotificationService.instance.notifyUser(
-      userId: sellerId,
-      title: "New Offer",
-      body: "RM ${result.toStringAsFixed(2)}",
-      type: 'offer',
-      itemId: widget.itemId,
-      chatRoomId: roomId,
-    );
+      await NotificationService.instance.notifyUser(
+        userId: sellerId,
+        title: "New Offer",
+        body: "RM ${result.toStringAsFixed(2)}",
+        type: 'offer',
+        itemId: widget.itemId,
+        chatRoomId: roomId,
+      );
 
-    if (!context.mounted) return;
+      if (!context.mounted) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ChatScreen(roomId: roomId)),
-    );
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(roomId: roomId)),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to make offer: $e')),
+      );
+    }
   }
 }

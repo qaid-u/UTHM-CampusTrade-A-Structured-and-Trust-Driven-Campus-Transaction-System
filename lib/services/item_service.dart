@@ -18,27 +18,9 @@ class ItemService {
     DocumentSnapshot? lastDocument,
   }) async {
     try {
-      // OPTIMIZED: Build query with minimal filters for faster response
-      Query<Map<String, dynamic>> query = _itemsRef;
-
-      // Only filter by status (indexed field)
-      query = query.where('status', isEqualTo: 'available');
-
-      // Order by creation time (needs composite index with status)
-      query = query.orderBy('createdAt', descending: true);
-
-      // Apply pagination
-      query = query.limit(limit);
-
-      // Apply category filter if specified (client-side filtering is faster for initial load)
-      if (category != null && category.isNotEmpty) {
-        query = query.where('category', isEqualTo: category);
-      }
-
-      // Apply meetup location filter if specified
-      if (meetupLocation != null && meetupLocation.isNotEmpty) {
-        query = query.where('meetupLocation', isEqualTo: meetupLocation);
-      }
+      // Keep the feed query simple so a new Firebase project does not need
+      // composite indexes before students can test the app.
+      Query<Map<String, dynamic>> query = _itemsRef.limit(limit);
 
       if (lastDocument != null) {
         query = query.startAfterDocument(lastDocument);
@@ -62,7 +44,20 @@ class ItemService {
             }
           })
           .whereType<ItemModel>()
+          .where((item) => item.status == 'available')
+          .where(
+            (item) =>
+                category == null || category.isEmpty || item.category == category,
+          )
+          .where(
+            (item) =>
+                meetupLocation == null ||
+                meetupLocation.isEmpty ||
+                item.meetupLocation == meetupLocation,
+          )
           .toList();
+
+      items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       // Return items and last document for pagination
       return {
@@ -136,6 +131,8 @@ class ItemService {
     required String condition,
     required String meetupLocation,
     required List<String> images,
+    List<String> imagePaths = const [],
+    String storageBucket = '',
   }) async {
     final thumbnail = images.isNotEmpty ? images.first : '';
 
@@ -153,6 +150,8 @@ class ItemService {
       meetupLocation: meetupLocation,
       thumbnail: thumbnail,
       images: images,
+      imagePaths: imagePaths,
+      storageBucket: storageBucket,
       createdAt: DateTime.now(),
     );
 

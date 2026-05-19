@@ -12,9 +12,13 @@ class StatusBadge extends StatelessWidget {
       TransactionStatus.pending => Colors.orange,
       TransactionStatus.accepted => Colors.blue,
       TransactionStatus.rejected => Colors.red,
-      TransactionStatus.payment_processing => Colors.purple,
+      TransactionStatus.payment_processing => Colors.orange,
       TransactionStatus.completed => Colors.green,
-      TransactionStatus.cancelled => Colors.grey,
+      TransactionStatus.cancelled => Colors.red,
+    };
+    final label = switch (status) {
+      TransactionStatus.payment_processing => 'AWAITING SELLER',
+      _ => status.name.replaceAll('_', ' ').toUpperCase(),
     };
 
     return Container(
@@ -25,7 +29,7 @@ class StatusBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
-        status.name.replaceAll('_', ' ').toUpperCase(),
+        label,
         style: TextStyle(
           color: color.shade700,
           fontWeight: FontWeight.w800,

@@ -6,6 +6,7 @@ class OfferModel {
   final String itemId;
   final String buyerId;
   final String sellerId;
+  final String createdBy;
   final double price;
   final String
   status; // 'pending', 'accepted', 'rejected', 'countered', 'cancelled'
@@ -18,6 +19,7 @@ class OfferModel {
     required this.itemId,
     required this.buyerId,
     required this.sellerId,
+    this.createdBy = '',
     required this.price,
     required this.status,
     required this.createdAt,
@@ -31,6 +33,7 @@ class OfferModel {
       'itemId': itemId,
       'buyerId': buyerId,
       'sellerId': sellerId,
+      'createdBy': createdBy,
       'price': price,
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -46,6 +49,7 @@ class OfferModel {
       itemId: data['itemId'] ?? '',
       buyerId: data['buyerId'] ?? '',
       sellerId: data['sellerId'] ?? '',
+      createdBy: data['createdBy'] ?? data['buyerId'] ?? '',
       price: _readDouble(data['price']),
       status: data['status'] ?? 'pending',
       createdAt: _readTimestamp(data['createdAt']),

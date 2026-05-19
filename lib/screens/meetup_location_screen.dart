@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -55,6 +56,11 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
 
   /// Handles GPS permissions and centers the map on current user location
   Future<void> _determineInitialPosition() async {
+    if (kIsWeb) {
+      _selectPreset(_presetLocations.first);
+      return;
+    }
+
     if (!mounted) return;
     setState(() => _isLocating = true);
     try {
@@ -168,42 +174,13 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
           else
             IconButton(
               icon: const Icon(Icons.my_location),
-              onPressed: _determineInitialPosition,
+              onPressed: kIsWeb ? null : _determineInitialPosition,
             )
         ],
       ),
       body: Stack(
         children: [
-          // Real live interactive Google Map
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _selectedLatLng,
-              zoom: 16.0,
-            ),
-            onMapCreated: (controller) => _mapController = controller,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            markers: {
-              Marker(
-                markerId: const MarkerId('meetup_pin'),
-                position: _selectedLatLng,
-                draggable: true,
-                onDragEnd: (newPosition) {
-                  setState(() => _selectedLatLng = newPosition);
-                  _reverseGeocode(newPosition);
-                },
-                infoWindow: InfoWindow(
-                  title: 'Meetup Point',
-                  snippet: _selectedAddress,
-                ),
-              ),
-            },
-            onTap: (clickedLatLng) {
-              setState(() => _selectedLatLng = clickedLatLng);
-              _reverseGeocode(clickedLatLng);
-            },
-          ),
+          _buildMapArea(),
 
           // Search / Address Card Overlay
           Positioned(
@@ -381,6 +358,86 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMapArea() {
+    if (kIsWeb) {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: const Color(0xFFEAF3FF),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 120, 24, 210),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.location_on_rounded,
+                  size: 72,
+                  color: Colors.blue,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _selectedAddress,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0B2D63),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_selectedLatLng.latitude.toStringAsFixed(4)}, ${_selectedLatLng.longitude.toStringAsFixed(4)}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Choose a safe campus meetup spot below.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _selectedLatLng,
+        zoom: 16.0,
+      ),
+      onMapCreated: (controller) => _mapController = controller,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      markers: {
+        Marker(
+          markerId: const MarkerId('meetup_pin'),
+          position: _selectedLatLng,
+          draggable: true,
+          onDragEnd: (newPosition) {
+            setState(() => _selectedLatLng = newPosition);
+            _reverseGeocode(newPosition);
+          },
+          infoWindow: InfoWindow(
+            title: 'Meetup Point',
+            snippet: _selectedAddress,
+          ),
+        ),
+      },
+      onTap: (clickedLatLng) {
+        setState(() => _selectedLatLng = clickedLatLng);
+        _reverseGeocode(clickedLatLng);
+      },
     );
   }
 }

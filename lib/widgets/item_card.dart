@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/item_model.dart';
 import '../theme/app_theme.dart';
+import 'item_image.dart';
 
 class ItemCard extends StatelessWidget {
   const ItemCard({super.key, required this.item, required this.onTap});
@@ -12,10 +12,6 @@ class ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use thumbnail for fast feed loading
-    final imageUrl = item.thumbnail;
-    final hasImage = imageUrl.isNotEmpty;
-
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadii.card),
@@ -33,31 +29,13 @@ class ItemCard extends StatelessWidget {
                   SizedBox(
                     height: 116,
                     width: double.infinity,
-                    child: !hasImage
-                        ? const _ImageLabel(label: 'NO IMAGE')
-                        : CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              color: Colors.grey.shade200,
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.electricBlue,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            errorWidget: (context, url, error) =>
-                                const _ImageLabel(label: 'ERROR'),
-                            fadeInDuration: const Duration(milliseconds: 300),
-                            fadeOutDuration: const Duration(milliseconds: 200),
-                          ),
+                    child: ItemImage(
+                      urls: [item.thumbnail, ...item.images],
+                      paths: item.imagePaths,
+                      storageBucket: item.storageBucket,
+                      height: 116,
+                      width: double.infinity,
+                    ),
                   ),
                   Positioned(
                     left: 10,
@@ -148,30 +126,6 @@ class ItemCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ImageLabel extends StatelessWidget {
-  const _ImageLabel({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(gradient: AppGradients.blueSurface),
-      child: Center(
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
           ),
         ),
       ),

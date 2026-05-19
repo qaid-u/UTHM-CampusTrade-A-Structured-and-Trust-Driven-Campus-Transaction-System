@@ -20,6 +20,8 @@ class ItemModel {
   // Images (optimized)
   final String thumbnail; // First image for fast feed loading
   final List<String> images; // All images (max 4)
+  final List<String> imagePaths;
+  final String storageBucket;
 
   // Metadata
   final String status; // available, sold, reserved
@@ -40,6 +42,8 @@ class ItemModel {
     this.meetupLocation = '',
     this.thumbnail = '',
     this.images = const [],
+    this.imagePaths = const [],
+    this.storageBucket = '',
     this.status = 'available',
     required this.createdAt,
     this.isFeatured = false,
@@ -63,6 +67,10 @@ class ItemModel {
       meetupLocation: json['meetupLocation'] ?? '',
       thumbnail: json['thumbnail'] ?? (images.isNotEmpty ? images.first : ''),
       images: images,
+      imagePaths: (json['imagePaths'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      storageBucket: json['storageBucket'] ?? '',
       status: json['status'] ?? 'available',
       createdAt: _readTimestamp(json['createdAt']),
       isFeatured: json['isFeatured'] ?? false,
@@ -88,6 +96,8 @@ class ItemModel {
       'meetupLocation': meetupLocation,
       'thumbnail': thumbnail,
       'images': images,
+      'imagePaths': imagePaths,
+      'storageBucket': storageBucket,
       'status': status,
       'createdAt': createdAt,
       'isFeatured': isFeatured,

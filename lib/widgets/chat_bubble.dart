@@ -5,6 +5,9 @@ class ChatBubble extends StatelessWidget {
   final String text;
   final String time;
   final String type;
+  final String imageUrl;
+  final String deliveryStatus;
+  final VoidCallback? onImageTap;
 
   const ChatBubble({
     super.key,
@@ -12,6 +15,9 @@ class ChatBubble extends StatelessWidget {
     required this.text,
     required this.time,
     this.type = 'text',
+    this.imageUrl = '',
+    this.deliveryStatus = '',
+    this.onImageTap,
   });
 
   @override
@@ -19,37 +25,45 @@ class ChatBubble extends StatelessWidget {
     if (type == 'system') {
       return Center(
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.grey.shade300,
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
             text,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.bold,
+              fontSize: 11,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: isMe
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
+    final isImage = type == 'image' && imageUrl.isNotEmpty;
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: isMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                constraints: const BoxConstraints(maxWidth: 260),
-                padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.only(
+              left: isMe ? 76 : 12,
+              right: isMe ? 12 : 76,
+              top: 3,
+              bottom: 1,
+            ),
+            child: Container(
+                constraints: const BoxConstraints(maxWidth: 248),
+                padding: EdgeInsets.all(isImage ? 4 : 12),
                 decoration: BoxDecoration(
                   color: isMe
                       ? Theme.of(context).primaryColor
@@ -70,26 +84,58 @@ class ChatBubble extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    color: isMe ? Colors.white : Colors.black87,
-                    fontSize: 15,
-                  ),
-                ),
+                child: isImage
+                    ? GestureDetector(
+                        onTap: onImageTap,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            imageUrl,
+                            width: 220,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const SizedBox(
+                                width: 220,
+                                height: 160,
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => const SizedBox(
+                              width: 220,
+                              height: 120,
+                              child: Center(child: Icon(Icons.broken_image)),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Text(
+                        text,
+                        style: TextStyle(
+                          color: isMe ? Colors.white : Colors.black87,
+                          fontSize: 15,
+                        ),
+                      ),
               ),
-            ],
-          ),
         ),
-        // Timestamp
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            padding: EdgeInsets.only(
+              left: isMe ? 76 : 16,
+              right: isMe ? 16 : 76,
+              bottom: 4,
+            ),
           child: Text(
-            time,
+            [
+              time,
+              if (isMe && deliveryStatus.isNotEmpty) deliveryStatus,
+            ].join(' | '),
             style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
         ),
       ],
+      ),
     );
   }
 }

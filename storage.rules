@@ -36,13 +36,15 @@ service firebase.storage {
     // - Max 5MB for profile pictures
     match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && isImage() && isValidSize(5);
+      allow create, update: if isOwner(userId) && isImage() && isValidSize(5);
+      allow delete: if isOwner(userId);
     }
 
     // Legacy path: /profile_pictures/{userId}/*
     match /profile_pictures/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && isImage() && isValidSize(5);
+      allow create, update: if isOwner(userId) && isImage() && isValidSize(5);
+      allow delete: if isOwner(userId);
     }
 
     // 2. ITEM IMAGES & PRODUCT LISTINGS
@@ -53,13 +55,15 @@ service firebase.storage {
     // - Must be image files only
     match /items/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow delete: if isAuthenticated();
     }
 
     // Legacy path: /item_images/{itemId}/*
     match /item_images/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow delete: if isAuthenticated();
     }
 
     // 3. THUMBNAILS
@@ -69,7 +73,8 @@ service firebase.storage {
     // - Max 2MB for thumbnails
     match /thumbnails/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(2);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(2);
+      allow delete: if isAuthenticated();
     }
 
     // 4. TRANSACTION/MEETUP PHOTOS (Optional Future Feature)
@@ -79,7 +84,18 @@ service firebase.storage {
     // - Max 5MB per photo
     match /transactions/{transactionId}/{allPaths=**} {
       allow read: if isAuthenticated(); // Can be restricted further with Firestore check
-      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
+    }
+
+    // 5. CHAT IMAGES
+    // Path: /chats/{roomId}/*
+    // - For sending photos in buyer/seller chat
+    // - Max 5MB per photo
+    match /chats/{roomId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     // 5. DEFAULT DENY RULE

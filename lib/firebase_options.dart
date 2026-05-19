@@ -41,13 +41,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyA0wIeTmNX9uWJMCkRv2exeeeINJcyc07o',
-    appId: '1:143669552877:web:00e3e77b35456ad903cee4',
-    messagingSenderId: '143669552877',
-    projectId: 'uthmcampustradedatabase',
-    authDomain: 'uthmcampustradedatabase.firebaseapp.com',
-    storageBucket: 'uthmcampustradedatabase.firebasestorage.app',
-    measurementId: 'G-2WXPPEKFKX',
+    apiKey: 'AIzaSyB6ZopMdMuRD4M3F9tLVRHd4vdz2c7-NZg',
+    appId: '1:507340658772:web:8aa902e0a3f5897768b5c1',
+    messagingSenderId: '507340658772',
+    projectId: 'uthm-campustrade',
+    authDomain: 'uthm-campustrade.firebaseapp.com',
+    storageBucket: 'uthm-campustrade.firebasestorage.app',
+    measurementId: 'G-M01V41L0YT',
   );
 
   static const FirebaseOptions android = FirebaseOptions(

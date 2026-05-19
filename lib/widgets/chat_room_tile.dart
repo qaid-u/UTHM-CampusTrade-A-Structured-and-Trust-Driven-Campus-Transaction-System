@@ -108,7 +108,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
         children: [
           Expanded(
             child: Text(
-              _isLoading ? itemTitle : '$_otherUserName • $itemTitle',
+              _isLoading ? itemTitle : '$_otherUserName - $itemTitle',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

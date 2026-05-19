@@ -3,8 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class MessageModel {
   final String id;
   final String senderId;
-  final String type; // 'text', 'offer', 'system'
+  final String type; // 'text', 'image', 'offer', 'system'
   final String text;
+  final String mediaUrl;
+  final List<String> readBy;
+  final List<String> deliveredTo;
   final DateTime createdAt;
 
   // Offer specific fields
@@ -19,6 +22,9 @@ class MessageModel {
     required this.senderId,
     required this.type,
     required this.text,
+    this.mediaUrl = '',
+    this.readBy = const [],
+    this.deliveredTo = const [],
     required this.createdAt,
     this.offerId,
     this.offerPrice,
@@ -32,6 +38,9 @@ class MessageModel {
       'senderId': senderId,
       'type': type,
       'text': text,
+      'mediaUrl': mediaUrl,
+      'readBy': readBy,
+      'deliveredTo': deliveredTo,
       'createdAt': Timestamp.fromDate(createdAt),
       if (offerId != null) 'offerId': offerId,
       if (offerPrice != null) 'offerPrice': offerPrice,
@@ -49,6 +58,9 @@ class MessageModel {
       senderId: data['senderId'] ?? '',
       type: data['type'] ?? 'text',
       text: data['text'] ?? '',
+      mediaUrl: data['mediaUrl'] ?? '',
+      readBy: List<String>.from(data['readBy'] ?? []),
+      deliveredTo: List<String>.from(data['deliveredTo'] ?? []),
       createdAt: _readTimestamp(data['createdAt']),
       offerId: data['offerId'],
       offerPrice: _readDouble(data['offerPrice']),

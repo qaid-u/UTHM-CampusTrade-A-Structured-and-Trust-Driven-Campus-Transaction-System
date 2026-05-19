@@ -128,12 +128,20 @@ class _AddItemScreenState extends State<AddItemScreen> {
       debugPrint('Uploading ${_images.length} images for item: $itemId');
 
       // UPLOAD IMAGES (COMPRESSED)
+      final storageBucket = StorageService.instance.bucketName;
+      final imagePaths = StorageService.instance.itemImagePaths(
+        itemId,
+        _images.length,
+      );
+
       final imageUrls = await StorageService.instance.uploadItemImages(
         itemId: itemId,
         images: _images,
       );
 
-      debugPrint('Successfully uploaded ${imageUrls.length} images');
+      debugPrint(
+        'Successfully uploaded ${imageUrls.length} images to $storageBucket',
+      );
 
       // SAVE ITEM with embedded seller snapshot (eliminates N+1 reads)
       await ItemService.instance.createItem(
@@ -149,6 +157,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
         condition: 'Used', // TODO: Add condition picker
         meetupLocation: 'Library', // TODO: Add location picker
         images: imageUrls,
+        imagePaths: imagePaths,
+        storageBucket: storageBucket,
       );
 
       debugPrint('Item saved to Firestore with seller snapshot');
@@ -160,7 +170,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       // Show success
       FeedbackHelper.showSuccess(
         context,
-        "Your item has been listed successfully!",
+        "Your item has been listed with ${imageUrls.length} photo(s).",
       );
 
       // Navigate back
