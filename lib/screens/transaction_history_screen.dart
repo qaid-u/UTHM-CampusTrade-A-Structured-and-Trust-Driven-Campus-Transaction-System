@@ -148,10 +148,39 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           ],
                         ),
                       if (tx.status == TransactionStatus.meetup_pending)
-                        FilledButton(
-                          onPressed: () =>
-                              _update(tx.id, 'completed', user.uid),
-                          child: const Text('Complete Handover'),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (tx.buyerId == user.uid)
+                              FilledButton(
+                                onPressed: () =>
+                                    _update(tx.id, 'completed', user.uid),
+                                child: const Text('Confirm Item Received'),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Awaiting buyer to confirm receipt',
+                                  style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _update(tx.id, 'cancelled', user.uid),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                              ),
+                              child: const Text('Cancel Deal'),
+                            ),
+                          ],
                         ),
                     ],
                   ),

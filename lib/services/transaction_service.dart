@@ -144,7 +144,51 @@ class TransactionService {
         );
     final itemTitle = itemDoc.data()?['title'] ?? 'Item';
 
+    // FIX: Ghost Offer Loophole - Automatically reject all other pending offers for this item
+    final otherOffers = await FirebaseFirestore.instance
+        .collection('offers')
+        .where('itemId', isEqualTo: itemId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    final List<Future<void>> rejectionTasks = [];
+
+    for (final doc in otherOffers.docs) {
+      if (doc.id != offerId) {
+        batch.update(doc.reference, {
+          'status': 'rejected',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        final otherRoomId = doc.data()['roomId'] as String?;
+        if (otherRoomId != null) {
+          final otherMsgs = await FirebaseFirestore.instance
+              .collection('chatRooms')
+              .doc(otherRoomId)
+              .collection('messages')
+              .where('offerId', isEqualTo: doc.id)
+              .limit(1)
+              .get();
+
+          if (otherMsgs.docs.isNotEmpty) {
+            batch.update(
+                otherMsgs.docs.first.reference, {'offerStatus': 'rejected'});
+          }
+
+          rejectionTasks.add(
+            ChatService.sendMessage(
+              roomId: otherRoomId,
+              senderId: actionUserId,
+              type: 'system',
+              text: 'Offer rejected: Item sold to another buyer.',
+            ),
+          );
+        }
+      }
+    }
+
     await batch.commit();
+    await Future.wait(rejectionTasks);
 
     // Send "Offer accepted" system message
     await ChatService.sendMessage(
@@ -204,10 +248,20 @@ class TransactionService {
       );
     }
 
-    await txRef.update({
+    final batch = FirebaseFirestore.instance.batch();
+    
+    batch.update(txRef, {
       'status': newStatus.name,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    // FIX: Ghosting Lockout - Reset item to available if transaction is cancelled
+    if (newStatus == TransactionStatus.cancelled) {
+      final itemRef = FirebaseFirestore.instance.collection('items').doc(tx.itemId);
+      batch.update(itemRef, {'status': 'available'});
+    }
+
+    await batch.commit();
 
     String systemText = '';
     String msgType = 'system';
