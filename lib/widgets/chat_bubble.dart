@@ -153,25 +153,56 @@ class ChatBubble extends StatelessWidget {
                   ],
                 ),
                 child: type == 'image'
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16).copyWith(
-                          bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
-                          bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
-                        ),
-                        child: Image.network(
-                          text,
-                          width: 200,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image)),
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const SizedBox(
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16).copyWith(
+                              bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
+                              bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
+                            ),
+                            child: Image.network(
+                              text,
                               width: 200,
-                              height: 200,
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          },
-                        ),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image)),
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return const SizedBox(
+                                  width: 200,
+                                  height: 200,
+                                  child: Center(child: CircularProgressIndicator()),
+                                );
+                              },
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(16),
+                                bottomRight: Radius.circular(16),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.verified_user, size: 14, color: Colors.green.shade700),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Payment Receipt Uploaded',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       )
                     : Text(
                         text,

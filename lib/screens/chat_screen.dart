@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
@@ -9,6 +10,9 @@ import '../widgets/offer_message_card.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/storage_service.dart';
 import '../services/review_service.dart';
+import 'meetup_location_screen.dart';
+import '../models/transaction_model.dart';
+import '../services/transaction_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -27,9 +31,10 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sellerId;
   String? _buyerId;
   String? _itemTitle;
-  String? _itemId;
   String? _otherUserName;
   String? _itemStatus;
+  String? _transactionId;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roomSubscription;
 
   late Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream;
 
@@ -53,43 +58,36 @@ class _ChatScreenState extends State<ChatScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markNotificationsAsRead();
-      _loadChatRoomInfo();
+      _listenChatRoomInfo();
     });
   }
 
-  Future<void> _loadChatRoomInfo() async {
-    try {
-      final roomDoc = await FirebaseFirestore.instance
-          .collection('chatRooms')
-          .doc(widget.roomId)
-          .get()
-          .timeout(
-            const Duration(seconds: 2),
-            onTimeout: () {
-              debugPrint('Load chat room info timed out');
-              throw Exception('Timeout loading chat room');
-            },
-          );
-
+  void _listenChatRoomInfo() {
+    _roomSubscription = FirebaseFirestore.instance
+        .collection('chatRooms')
+        .doc(widget.roomId)
+        .snapshots()
+        .listen((roomDoc) {
       if (roomDoc.exists && mounted) {
         final data = roomDoc.data();
         final sellerId = data?['sellerId'];
         final buyerId = data?['buyerId'];
         final itemId = data?['itemId'];
         final itemTitle = data?['itemTitle'] ?? 'Item';
+        final transactionId = data?['transactionId'];
 
         setState(() {
           _sellerId = sellerId;
           _buyerId = buyerId;
           _itemTitle = itemTitle;
-          _itemId = itemId;
+          _transactionId = transactionId;
         });
 
         _loadCounterpartNameAndItemStatus(sellerId, buyerId, itemId);
       }
-    } catch (e) {
-      debugPrint('Error loading chat room info: $e');
-    }
+    }, onError: (e) {
+      debugPrint('Error listening to chat room info: $e');
+    });
   }
 
   Future<void> _loadCounterpartNameAndItemStatus(
@@ -236,6 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _roomSubscription?.cancel();
     super.dispose();
   }
 
@@ -338,6 +337,243 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildTransactionBanner() {
+    if (_transactionId == null || _transactionId!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('transactions')
+          .doc(_transactionId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
+
+        final txData = snapshot.data!.data()!;
+        final statusStr = txData['status'] ?? 'accepted';
+        final meetupLocation = txData['meetupLocation'] ?? '';
+        final isSeller = user!.uid == _sellerId;
+
+        final status = TransactionStatus.values.firstWhere(
+          (e) => e.name == statusStr,
+          orElse: () => TransactionStatus.accepted,
+        );
+
+        Color bannerColor;
+        Color textColor;
+        String title;
+        String subtitle;
+        List<Widget> actions = [];
+
+        switch (status) {
+          case TransactionStatus.accepted:
+            bannerColor = Colors.blue.shade50;
+            textColor = Colors.blue.shade900;
+            title = 'Deal Accepted!';
+            subtitle = meetupLocation.isNotEmpty
+                ? 'Meetup set at: $meetupLocation'
+                : 'Seller needs to set a meetup location.';
+            if (isSeller) {
+              actions = [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.map, size: 16),
+                  label: const Text('Set Meetup Location'),
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MeetupLocationScreen(
+                          selected: meetupLocation,
+                        ),
+                      ),
+                    );
+                    if (result != null && result is Map) {
+                      await TransactionService.instance.setMeetupLocation(
+                        transactionId: _transactionId!,
+                        locationName: result['location'],
+                        latitude: result['latitude'],
+                        longitude: result['longitude'],
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    await TransactionService.instance.updateTransactionStatus(
+                      transactionId: _transactionId!,
+                      newStatus: TransactionStatus.meetup_pending,
+                      actionUserId: user!.uid,
+                      roomId: widget.roomId,
+                    );
+                  },
+                  child: const Text('Confirm Meetup'),
+                ),
+              ];
+            } else {
+              actions = [
+                const Text('Awaiting seller to set meetup...', style: TextStyle(fontStyle: FontStyle.italic)),
+              ];
+            }
+            break;
+
+          case TransactionStatus.meetup_pending:
+            bannerColor = Colors.orange.shade50;
+            textColor = Colors.orange.shade900;
+            title = 'Meetup Confirmed 📍';
+            subtitle = 'Location: $meetupLocation\nUpload payment proof via DuitNow to finalize.';
+            if (!isSeller) {
+              actions = [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.upload_file, size: 16),
+                  label: const Text('Upload Receipt'),
+                  onPressed: _pickImage,
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Confirm Receipt?'),
+                        content: const Text(
+                          'Ensure you have received the item and sent the DuitNow payment before confirming.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Confirm'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await TransactionService.instance.updateTransactionStatus(
+                        transactionId: _transactionId!,
+                        newStatus: TransactionStatus.completed,
+                        actionUserId: user!.uid,
+                        roomId: widget.roomId,
+                      );
+                    }
+                  },
+                  child: const Text('Confirm Received'),
+                ),
+              ];
+            } else {
+              actions = [
+                const Text('Awaiting buyer to complete payment...', style: TextStyle(fontStyle: FontStyle.italic)),
+              ];
+            }
+            actions.add(const SizedBox(width: 8));
+            actions.add(
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Cancel Deal?'),
+                      content: const Text('This will make the item available for other buyers again.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Keep Deal'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          child: const Text('Cancel Deal'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await TransactionService.instance.updateTransactionStatus(
+                      transactionId: _transactionId!,
+                      newStatus: TransactionStatus.cancelled,
+                      actionUserId: user!.uid,
+                      roomId: widget.roomId,
+                    );
+                  }
+                },
+                child: const Text('Cancel Deal'),
+              ),
+            );
+            break;
+
+          case TransactionStatus.completed:
+            bannerColor = Colors.green.shade50;
+            textColor = Colors.green.shade900;
+            title = 'Deal Completed 🎉';
+            subtitle = 'Please leave your feedback to help the community.';
+            actions = [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.rate_review),
+                label: const Text('Leave a Review'),
+                onPressed: _showReviewDialog,
+              ),
+            ];
+            break;
+
+          case TransactionStatus.cancelled:
+            bannerColor = Colors.red.shade50;
+            textColor = Colors.red.shade900;
+            title = 'Deal Cancelled ❌';
+            subtitle = 'This transaction was cancelled.';
+            actions = [];
+            break;
+
+          default:
+            return const SizedBox.shrink();
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: bannerColor,
+            border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 12),
+              ),
+              if (actions.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: actions),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (user == null) {
@@ -404,6 +640,7 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            _buildTransactionBanner(),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _messagesStream,

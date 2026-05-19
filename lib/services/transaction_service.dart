@@ -262,6 +262,10 @@ class TransactionService {
     if (newStatus == TransactionStatus.cancelled) {
       final itemRef = FirebaseFirestore.instance.collection('items').doc(tx.itemId);
       batch.update(itemRef, {'status': 'available'});
+
+      // Reset transactionId in chatRoom to allow new offers
+      final roomRef = FirebaseFirestore.instance.collection('chatRooms').doc(roomId);
+      batch.update(roomRef, {'transactionId': FieldValue.delete()});
     }
 
     await batch.commit();
