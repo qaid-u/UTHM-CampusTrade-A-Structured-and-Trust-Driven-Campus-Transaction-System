@@ -82,7 +82,16 @@ service firebase.storage {
       allow write: if isAuthenticated() && isImage() && isValidSize(5);
     }
 
-    // 5. DEFAULT DENY RULE
+    // 5. CHAT IMAGES (for transaction receipts)
+    // Path: /chat/{roomId}/*
+    // - Only authenticated users can read/write
+    // - Max 5MB per chat image (compressed JPEG receipts)
+    match /chat/{roomId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+    }
+
+    // 6. DEFAULT DENY RULE
     // - Block access to any paths not explicitly allowed above
     match /{allPaths=**} {
       allow read, write: if false;
