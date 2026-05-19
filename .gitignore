@@ -1,6 +1,18 @@
-firebase-debug.log
+# Logs and local environment
 *.log
+firebase-debug.log
 functions/.env
 functions/.env.*
 !functions/.env.example
+
+# Flutter and Dart generated files
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+
+# Local dependency/cache folders
 functions/node_modules/
+android/.gradle/
