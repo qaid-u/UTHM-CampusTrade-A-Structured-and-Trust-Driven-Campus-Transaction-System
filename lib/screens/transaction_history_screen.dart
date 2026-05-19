@@ -90,7 +90,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                         Text('Meetup: ${tx.meetupLocation}'),
                       const SizedBox(height: 10),
                       if (tx.sellerId == user.uid &&
-                          tx.status == TransactionStatus.pending)
+                          tx.status == TransactionStatus.pending_offer)
                         Row(
                           children: [
                             FilledButton(
@@ -141,17 +141,17 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () =>
-                                    _update(tx.id, 'payment_processing', user.uid),
-                                child: const Text('Simulate Pay', style: TextStyle(fontSize: 12)),
+                                    _update(tx.id, 'meetup_pending', user.uid),
+                                child: const Text('Confirm Meetup', style: TextStyle(fontSize: 12)),
                               ),
                             ),
                           ],
                         ),
-                      if (tx.status == TransactionStatus.payment_processing)
+                      if (tx.status == TransactionStatus.meetup_pending)
                         FilledButton(
                           onPressed: () =>
                               _update(tx.id, 'completed', user.uid),
-                          child: const Text('Complete Transaction'),
+                          child: const Text('Complete Handover'),
                         ),
                     ],
                   ),
@@ -196,7 +196,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
     final newStatus = TransactionStatus.values.firstWhere(
       (e) => e.name == status,
-      orElse: () => TransactionStatus.pending,
+      orElse: () => TransactionStatus.pending_offer,
     );
 
     try {

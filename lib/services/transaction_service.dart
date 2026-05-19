@@ -160,9 +160,9 @@ class TransactionService {
   }
 
   /// Strict transition of transaction state
-  /// pending -> accepted -> payment_processing -> completed
+  /// pending_offer -> accepted -> meetup_pending -> completed
   /// OR
-  /// pending -> rejected -> cancelled
+  /// pending_offer -> rejected -> cancelled
   Future<void> updateTransactionStatus({
     required String transactionId,
     required TransactionStatus newStatus,
@@ -181,17 +181,17 @@ class TransactionService {
 
     // Validate strict state transition rule
     bool isValid = false;
-    if (currentStatus == TransactionStatus.pending) {
+    if (currentStatus == TransactionStatus.pending_offer) {
       if (newStatus == TransactionStatus.accepted ||
           newStatus == TransactionStatus.rejected) {
         isValid = true;
       }
     } else if (currentStatus == TransactionStatus.accepted) {
-      if (newStatus == TransactionStatus.payment_processing ||
+      if (newStatus == TransactionStatus.meetup_pending ||
           newStatus == TransactionStatus.cancelled) {
         isValid = true;
       }
-    } else if (currentStatus == TransactionStatus.payment_processing) {
+    } else if (currentStatus == TransactionStatus.meetup_pending) {
       if (newStatus == TransactionStatus.completed ||
           newStatus == TransactionStatus.cancelled) {
         isValid = true;
@@ -210,21 +210,27 @@ class TransactionService {
     });
 
     String systemText = '';
+    String msgType = 'system';
     switch (newStatus) {
       case TransactionStatus.accepted:
         systemText = 'Offer accepted';
+        msgType = 'system';
         break;
       case TransactionStatus.rejected:
         systemText = 'Offer rejected';
+        msgType = 'system';
         break;
-      case TransactionStatus.payment_processing:
-        systemText = 'Payment processing (dummy)';
+      case TransactionStatus.meetup_pending:
+        systemText = 'Meetup scheduled';
+        msgType = 'transaction_update';
         break;
       case TransactionStatus.completed:
         systemText = 'Transaction completed';
+        msgType = 'transaction_update';
         break;
       case TransactionStatus.cancelled:
         systemText = 'Transaction cancelled';
+        msgType = 'transaction_update';
         break;
       default:
         break;
@@ -234,7 +240,7 @@ class TransactionService {
       await ChatService.sendMessage(
         roomId: roomId,
         senderId: actionUserId,
-        type: 'system',
+        type: msgType,
         text: systemText,
       );
     }

@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum TransactionStatus {
-  pending,
+  pending_offer,
   accepted,
   rejected,
-  payment_processing,
+  meetup_pending,
   completed,
   cancelled,
 }
@@ -65,7 +65,7 @@ class TransactionModel {
       meetupLongitude: _readDouble(json['meetupLongitude']),
       status: TransactionStatus.values.firstWhere(
         (e) => e.name == json['status'],
-        orElse: () => TransactionStatus.pending,
+        orElse: () => TransactionStatus.pending_offer,
       ),
       createdAt: _readTimestamp(json['createdAt']),
       updatedAt: _readTimestamp(json['updatedAt']),

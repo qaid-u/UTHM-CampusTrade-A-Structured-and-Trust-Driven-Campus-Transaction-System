@@ -135,7 +135,7 @@ service cloud.firestore {
     match /chatRooms/{roomId} {
       // Allow read if document exists and user is participant, OR if document doesn't exist (for existence check)
       allow read: if isAuthenticated() && (
-        resource.data == null || // Allow checking if room exists
+        resource == null || // Allow checking if room exists
         isParticipant(resource.data) // Allow reading if participant
       );
       
@@ -146,7 +146,7 @@ service cloud.firestore {
       
       allow update: if isAuthenticated() && (
         // Check if user is participant (for existing documents)
-        (resource.data != null && isParticipant(resource.data)) ||
+        (resource != null && isParticipant(resource.data)) ||
         // For new documents being created with set() merge
         (request.auth.uid == request.resource.data.buyerId || 
          request.auth.uid == request.resource.data.sellerId)

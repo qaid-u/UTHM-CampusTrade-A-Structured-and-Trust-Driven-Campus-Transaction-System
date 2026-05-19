@@ -37,6 +37,44 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
+    if (type == 'transaction_update') {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.swap_horizontal_circle, color: Colors.green.shade700, size: 20),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.green.shade800,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: isMe
           ? CrossAxisAlignment.end
