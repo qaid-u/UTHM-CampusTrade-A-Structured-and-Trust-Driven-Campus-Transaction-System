@@ -1,260 +1,139 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ============================================
-    // HELPER FUNCTIONS
-    // ============================================
     
-    function isAuthenticated() {
+    // Helper functions
+    function isSignedIn() {
       return request.auth != null;
     }
-
+    
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Check if user is participant in a transaction/chat
-    function isParticipant(resourceData) {
-      return request.auth.uid == resourceData.buyerId || 
-             request.auth.uid == resourceData.sellerId ||
-             request.auth.uid in resourceData.participantIds;
-    }
-
-    // Validate required fields for users collection
-    function isValidUserData() {
-      return request.resource.data.keys().hasAll(['name', 'studentId', 'email', 'phone']) &&
-             request.resource.data.name is string &&
-             request.resource.data.studentId is string &&
-             request.resource.data.email is string &&
-             request.resource.data.phone is string &&
-             (request.resource.data.trustScore is number || !request.resource.data.keys().hasAll(['trustScore'])) &&
-             (request.resource.data.completedTransactions is number || !request.resource.data.keys().hasAll(['completedTransactions'])) &&
-             (request.resource.data.rating is number || !request.resource.data.keys().hasAll(['rating']));
-    }
-
-    // Validate required fields for items collection
-    function isValidItemData() {
-      return request.resource.data.keys().hasAll(['sellerId', 'title', 'price', 'category']) &&
-             request.resource.data.sellerId is string &&
-             request.resource.data.title is string &&
-             request.resource.data.price is number &&
-             request.resource.data.category is string &&
-             request.resource.data.price > 0 &&
-             request.resource.data.price < 100000;
-    }
-
-    // Validate required fields for chat rooms
-    function isValidChatRoomData() {
-      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds', 'itemId']) &&
-             request.resource.data.buyerId is string &&
-             request.resource.data.sellerId is string &&
-             request.resource.data.participantIds is list &&
-             request.resource.data.participantIds.size() >= 2 &&
-             request.resource.data.itemId is string;
-    }
-
-    // Validate required fields for messages
-    function isValidMessageData() {
-      return request.resource.data.keys().hasAll(['senderId', 'type', 'text']) &&
-             request.resource.data.senderId is string &&
-             request.resource.data.type is string &&
-             request.resource.data.text is string &&
-             request.resource.data.type in ['text', 'offer', 'system', 'image', 'transaction_update', 'rating_prompt'];
-    }
-
-    // Validate required fields for offers
-    function isValidOfferData() {
-      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'itemId', 'roomId', 'price', 'status']) &&
-             request.resource.data.buyerId is string &&
-             request.resource.data.sellerId is string &&
-             request.resource.data.itemId is string &&
-             request.resource.data.roomId is string &&
-             request.resource.data.price is number &&
-             request.resource.data.price > 0 &&
-             request.resource.data.price < 100000 &&
-             request.resource.data.status in ['pending', 'accepted', 'rejected', 'countered', 'cancelled'];
-    }
-
-    // Validate required fields for transactions
-    function isValidTransactionData() {
-      return request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'itemId', 'status']) &&
-             request.resource.data.buyerId is string &&
-             request.resource.data.sellerId is string &&
-             request.resource.data.itemId is string &&
-             request.resource.data.status in ['pending', 'accepted', 'rejected', 'payment_processing', 'completed', 'cancelled'];
-    }
-
-    // Validate notification data
-    function isValidNotificationData() {
-      return request.resource.data.keys().hasAll(['userId']) &&
-             request.resource.data.userId is string;
-    }
-
-    // ============================================
-    // COLLECTION RULES
-    // ============================================
-
-    // 1. USERS COLLECTION
-    // - Users can read all profiles (for viewing seller info)
-    // - Users can only update their own profile
-    // - Users cannot delete their own profile (admin only)
+    // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUserData();
-      allow update: if isOwner(userId) && (
-        // Allow updating profile fields but not critical security fields
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'phone', 'trustScore', 'completedTransactions', 'rating'
-        ])
-      );
-      allow delete: if false; // Prevent account deletion via Firestore (use Auth instead)
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
     }
 
-    // 2. ITEMS COLLECTION
-    // - All authenticated users can browse items
-    // - Only item owner can create/update/delete
-    // - Status changes are restricted to prevent abuse
+    // Items collection
     match /items/{itemId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-                       request.resource.data.sellerId == request.auth.uid &&
-                       isValidItemData();
-      allow update: if isAuthenticated() && 
-                       resource.data.sellerId == request.auth.uid &&
-                       // Allow updating most fields but not sellerId
-                       !request.resource.data.keys().hasAll(['sellerId']) ||
-                       request.resource.data.sellerId == resource.data.sellerId;
-      allow delete: if isAuthenticated() && resource.data.sellerId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid ||
+        // Allow status updates during transaction state sync (buying/locking)
+        request.resource.data.status == 'sold' ||
+        request.resource.data.status == 'completed' ||
+        request.resource.data.status == 'available'
+      );
+      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
     }
 
-    // 3. CHAT ROOMS COLLECTION
-    // - Only participants can read/write to chat rooms
-    // - Room creation requires valid participant data
-    match /chatRooms/{roomId} {
-      // Allow read if document exists and user is participant, OR if document doesn't exist (for existence check)
-      allow read: if isAuthenticated() && (
-        resource == null || // Allow checking if room exists
-        isParticipant(resource.data) // Allow reading if participant
+    // Offers collection
+    match /offers/{offerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid || 
+        resource.data.buyerId == request.auth.uid
       );
-      
-      allow create: if isAuthenticated() && 
-                       isValidChatRoomData() &&
-                       (request.auth.uid == request.resource.data.buyerId || 
-                        request.auth.uid == request.resource.data.sellerId);
-      
-      allow update: if isAuthenticated() && (
-        // Check if user is participant (for existing documents)
-        (resource != null && isParticipant(resource.data)) ||
-        // For new documents being created with set() merge
-        (request.auth.uid == request.resource.data.buyerId || 
-         request.auth.uid == request.resource.data.sellerId)
-      ) &&
-      // Allow updating chat metadata but not participant lists
-      (!request.resource.data.keys().hasAll(['buyerId', 'sellerId', 'participantIds']) ||
-       (request.resource.data.buyerId == resource.data.buyerId &&
-        request.resource.data.sellerId == resource.data.sellerId));
+      allow delete: if false; // Cannot delete offers, only cancel/reject
+    }
 
-      // 3a. MESSAGES SUBCOLLECTION
-      // - Only chat participants can read messages
-      // - Sender can create messages
-      // - Only sender can update/delete their own messages
+    // Transactions collection
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.buyerId || 
+        request.auth.uid == resource.data.sellerId || 
+        request.auth.uid in resource.data.participants
+      );
+      allow create: if isSignedIn() && (
+        request.auth.uid == request.resource.data.buyerId || 
+        request.auth.uid == request.resource.data.sellerId
+      );
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.buyerId || 
+        request.auth.uid == resource.data.sellerId
+      ) && (
+        // Only buyer can complete transaction
+        (request.resource.data.status == 'completed' && request.auth.uid == resource.data.buyerId) ||
+        // Cancel can be done by either, but cannot cancel completed
+        (request.resource.data.status == 'cancelled' && resource.data.status != 'completed') ||
+        // Meetup confirm/update or other fields progression
+        (request.resource.data.status == 'meetup_pending' || request.resource.data.status == resource.data.status)
+      );
+      allow delete: if false;
+    }
+
+    // Chat Rooms collection
+    match /chatRooms/{roomId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.participantIds ||
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.auth.uid in request.resource.data.participantIds ||
+        request.resource.data.buyerId == request.auth.uid ||
+        request.resource.data.sellerId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.participantIds ||
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid
+      );
+      allow delete: if false;
+
+      // Messages sub-collection
       match /messages/{messageId} {
-        allow read: if isAuthenticated() && (
-          request.auth.uid == get(/databases/$(database)/documents/chatRooms/$(roomId)).data.buyerId ||
-          request.auth.uid == get(/databases/$(database)/documents/chatRooms/$(roomId)).data.sellerId
+        allow read: if isSignedIn() && (
+          request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participantIds ||
+          get(/databases/$(database)/documents/chatRooms/$(roomId)).data.buyerId == request.auth.uid ||
+          get(/databases/$(database)/documents/chatRooms/$(roomId)).data.sellerId == request.auth.uid
         );
-        
-        allow create: if isAuthenticated() && 
-                         isValidMessageData() &&
-                         request.auth.uid == request.resource.data.senderId;
-        
-        allow update: if isAuthenticated() && (
-          resource.data.senderId == request.auth.uid ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offerStatus'])
-        );
-        
-        allow delete: if isAuthenticated() && 
-                         resource.data.senderId == request.auth.uid;
+        allow create: if isSignedIn() 
+          && (
+            request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participantIds ||
+            get(/databases/$(database)/documents/chatRooms/$(roomId)).data.buyerId == request.auth.uid ||
+            get(/databases/$(database)/documents/chatRooms/$(roomId)).data.sellerId == request.auth.uid
+          )
+          && request.resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() 
+          && (
+            request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participantIds ||
+            get(/databases/$(database)/documents/chatRooms/$(roomId)).data.buyerId == request.auth.uid ||
+            get(/databases/$(database)/documents/chatRooms/$(roomId)).data.sellerId == request.auth.uid
+          )
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offerStatus']);
+        allow delete: if false;
       }
     }
 
-    // 4. OFFERS COLLECTION
-    // - Only buyer and seller can view offers
-    // - Only buyer can create offers
-    // - Both buyer and seller can update (for status changes)
-    match /offers/{offerId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId
-      );
-      
-      allow create: if isAuthenticated() && 
-                       isValidOfferData() &&
-                       request.auth.uid == request.resource.data.buyerId;
-      
-      allow update: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId
-      ) &&
-      // Restrict status changes: only seller can accept/reject, only buyer can cancel/counter
-      (request.resource.data.status == resource.data.status ||
-       (request.auth.uid == resource.data.sellerId && 
-        request.resource.data.status in ['accepted', 'rejected']) ||
-       (request.auth.uid == resource.data.buyerId && 
-        request.resource.data.status in ['countered', 'cancelled']));
-      
-      allow delete: if false; // Prevent deletion to maintain transaction history
-    }
-
-    // 5. TRANSACTIONS COLLECTION
-    // - Only participants can view transactions
-    // - Creation requires valid buyer/seller relationship
-    // - Status updates are restricted to prevent unauthorized changes
-    match /transactions/{transactionId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId ||
-        request.auth.uid in resource.data.participants
-      );
-      
-      allow create: if isAuthenticated() && 
-                       isValidTransactionData() &&
-                       (request.auth.uid == request.resource.data.sellerId ||
-                        request.auth.uid == request.resource.data.buyerId);
-      
-      allow update: if isAuthenticated() && (
-        request.auth.uid == resource.data.buyerId || 
-        request.auth.uid == resource.data.sellerId
-      ) &&
-      // Only allow specific field updates (status, meetup location)
-      request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'status', 'meetupLocation', 'meetupLatitude', 'meetupLongitude', 'updatedAt'
-      ]);
-      
-      allow delete: if false; // Prevent deletion to maintain transaction history
-    }
-
-    // 6. NOTIFICATIONS COLLECTION
-    // - Users can only read their own notifications
-    // - System/users can create notifications for others
-    // - Only recipient can update (mark as read) or delete
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated() && isValidNotificationData();
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
-    // 7. REVIEWS COLLECTION
-    // - Anyone authenticated can read reviews
-    // - Only the reviewer can create their own review
+    // Reviews collection
     match /reviews/{reviewId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-                       request.auth.uid == request.resource.data.reviewerId &&
-                       request.resource.data.keys().hasAll(['transactionId', 'reviewerId', 'revieweeId', 'rating']);
-      allow update, delete: if false; // Reviews are immutable once submitted
+      allow read: if isSignedIn();
+      // Double-blind review: document name is ${transactionId}_${reviewerId}
+      allow create: if isSignedIn() 
+        && request.auth.uid == request.resource.data.reviewerId
+        && reviewId == request.resource.data.transactionId + '_' + request.resource.data.reviewerId;
+      allow update, delete: if false; // Immutable write-once reviews
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Config collection
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
   }
 }

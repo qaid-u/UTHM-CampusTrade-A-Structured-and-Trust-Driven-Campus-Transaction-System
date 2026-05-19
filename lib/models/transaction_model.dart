@@ -25,6 +25,17 @@ class TransactionModel {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  // New fields for complete transaction engine
+  final bool buyerMeetupConfirmed;
+  final bool sellerMeetupConfirmed;
+  final bool receiptUploaded;
+  final bool paymentVerified;
+  final DateTime? verifiedAt;
+  final String? receiptUrl;
+  final String? cancelledBy;
+  final String? cancelledReason;
+  final DateTime? completedAt;
+
   TransactionModel({
     required this.id,
     required this.itemId,
@@ -40,6 +51,15 @@ class TransactionModel {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.buyerMeetupConfirmed = false,
+    this.sellerMeetupConfirmed = false,
+    this.receiptUploaded = false,
+    this.paymentVerified = false,
+    this.verifiedAt,
+    this.receiptUrl,
+    this.cancelledBy,
+    this.cancelledReason,
+    this.completedAt,
   });
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
@@ -69,6 +89,15 @@ class TransactionModel {
       ),
       createdAt: _readTimestamp(json['createdAt']),
       updatedAt: _readTimestamp(json['updatedAt']),
+      buyerMeetupConfirmed: json['buyerMeetupConfirmed'] ?? false,
+      sellerMeetupConfirmed: json['sellerMeetupConfirmed'] ?? false,
+      receiptUploaded: json['receiptUploaded'] ?? false,
+      paymentVerified: json['paymentVerified'] ?? false,
+      verifiedAt: json['verifiedAt'] != null ? _readTimestamp(json['verifiedAt']) : null,
+      receiptUrl: json['receiptUrl'],
+      cancelledBy: json['cancelledBy'],
+      cancelledReason: json['cancelledReason'],
+      completedAt: json['completedAt'] != null ? _readTimestamp(json['completedAt']) : null,
     );
   }
 
@@ -94,6 +123,15 @@ class TransactionModel {
       'status': status.name,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'buyerMeetupConfirmed': buyerMeetupConfirmed,
+      'sellerMeetupConfirmed': sellerMeetupConfirmed,
+      'receiptUploaded': receiptUploaded,
+      'paymentVerified': paymentVerified,
+      if (verifiedAt != null) 'verifiedAt': Timestamp.fromDate(verifiedAt!),
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
+      if (cancelledBy != null) 'cancelledBy': cancelledBy,
+      if (cancelledReason != null) 'cancelledReason': cancelledReason,
+      if (completedAt != null) 'completedAt': Timestamp.fromDate(completedAt!),
     };
   }
 

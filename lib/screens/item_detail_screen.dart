@@ -303,9 +303,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: (data['status'] == 'sold') ? null : () => _makeOffer(context, data),
-                          style: (data['status'] == 'sold') ? ElevatedButton.styleFrom(backgroundColor: Colors.grey) : null,
-                          child: Text(data['status'] == 'sold' ? "Item Sold" : "Make Offer"),
+                          onPressed: (data['status'] == 'sold' || data['status'] == 'completed') ? null : () => _makeOffer(context, data),
+                          style: (data['status'] == 'sold' || data['status'] == 'completed') ? ElevatedButton.styleFrom(backgroundColor: Colors.grey) : null,
+                          child: Text((data['status'] == 'sold' || data['status'] == 'completed') ? "Item Sold" : "Make Offer"),
                         ),
                       ),
                       const SizedBox(width: 12),

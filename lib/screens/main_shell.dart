@@ -45,8 +45,8 @@ class _MainShellState extends State<MainShell> {
       final db = FirebaseFirestore.instance;
       final roomDoc = await db.collection('chatRooms').doc('mock_room_123').get();
       
-      // If already exists, do not overwrite or re-create
-      if (roomDoc.exists) {
+      // If already exists and has participantIds, do not overwrite or re-create
+      if (roomDoc.exists && roomDoc.data()?['participantIds'] != null) {
         debugPrint('Silent Demo Data: Already exists, skipping creation.');
         return;
       }
@@ -82,6 +82,8 @@ class _MainShellState extends State<MainShell> {
         'itemThumbnail': 'https://picsum.photos/200',
         'buyerId': 'mock_buyer_123',
         'sellerId': user.uid,
+        'participantIds': [user.uid, 'mock_buyer_123'],
+        'unreadCounts': {user.uid: 0, 'mock_buyer_123': 0},
         'lastMessage': 'RM 50.00',
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));

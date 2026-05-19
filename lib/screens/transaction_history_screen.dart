@@ -121,11 +121,32 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                     ),
                                   );
                                   if (result != null && result is Map) {
-                                    await TransactionService.instance.setMeetupLocation(
+                                    // Fetch roomId
+                                    String rId = '';
+                                    final offerDoc = await FirebaseFirestore.instance
+                                        .collection('offers')
+                                        .doc(tx.id)
+                                        .get();
+                                    if (offerDoc.exists) {
+                                      rId = offerDoc.data()?['roomId'] ?? '';
+                                    }
+                                    if (rId.isEmpty) {
+                                      final rooms = await FirebaseFirestore.instance
+                                          .collection('chatRooms')
+                                          .where('participantIds', arrayContains: user.uid)
+                                          .get();
+                                      if (rooms.docs.isNotEmpty) {
+                                        rId = rooms.docs.first.id;
+                                      }
+                                    }
+
+                                    await TransactionService.instance.suggestMeetupLocation(
                                       transactionId: tx.id,
                                       locationName: result['location'],
                                       latitude: result['latitude'],
                                       longitude: result['longitude'],
+                                      actionUserId: user.uid,
+                                      roomId: rId,
                                     );
                                   }
                                 },
@@ -229,12 +250,20 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     );
 
     try {
-      await TransactionService.instance.updateTransactionStatus(
-        transactionId: id,
-        newStatus: newStatus,
-        actionUserId: currentUserId,
-        roomId: roomId,
-      );
+      if (newStatus == TransactionStatus.meetup_pending) {
+        await TransactionService.instance.confirmMeetupLocation(
+          transactionId: id,
+          actionUserId: currentUserId,
+          roomId: roomId,
+        );
+      } else {
+        await TransactionService.instance.updateTransactionStatus(
+          transactionId: id,
+          newStatus: newStatus,
+          actionUserId: currentUserId,
+          roomId: roomId,
+        );
+      }
 
       // Backwards compatible notification triggering
       if (status == 'accepted' || status == 'rejected') {

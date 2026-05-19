@@ -34,6 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _otherUserName;
   String? _itemStatus;
   String? _transactionId;
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _transactionStream;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roomSubscription;
 
   late Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream;
@@ -63,11 +64,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _listenChatRoomInfo() {
+    debugPrint('[ChatScreen] _listenChatRoomInfo registering listener');
     _roomSubscription = FirebaseFirestore.instance
         .collection('chatRooms')
         .doc(widget.roomId)
         .snapshots()
         .listen((roomDoc) {
+      debugPrint('[ChatScreen] _listenChatRoomInfo snapshot received. exists: ${roomDoc.exists}');
       if (roomDoc.exists && mounted) {
         final data = roomDoc.data();
         final sellerId = data?['sellerId'];
@@ -75,12 +78,25 @@ class _ChatScreenState extends State<ChatScreen> {
         final itemId = data?['itemId'];
         final itemTitle = data?['itemTitle'] ?? 'Item';
         final transactionId = data?['transactionId'];
+        debugPrint('[ChatScreen] _listenChatRoomInfo data: sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId, transactionId=$transactionId');
 
         setState(() {
           _sellerId = sellerId;
           _buyerId = buyerId;
           _itemTitle = itemTitle;
-          _transactionId = transactionId;
+          if (transactionId != _transactionId) {
+            debugPrint('[ChatScreen] _listenChatRoomInfo: transactionId changed from $_transactionId to $transactionId');
+            _transactionId = transactionId;
+            if (transactionId != null && transactionId.toString().isNotEmpty) {
+              debugPrint('[ChatScreen] _listenChatRoomInfo: creating transaction stream for $transactionId');
+              _transactionStream = FirebaseFirestore.instance
+                  .collection('transactions')
+                  .doc(transactionId.toString())
+                  .snapshots();
+            } else {
+              _transactionStream = null;
+            }
+          }
         });
 
         _loadCounterpartNameAndItemStatus(sellerId, buyerId, itemId);
@@ -95,30 +111,36 @@ class _ChatScreenState extends State<ChatScreen> {
     String? buyerId,
     String? itemId,
   ) async {
+    debugPrint('[ChatScreen] _loadCounterpartNameAndItemStatus start. sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId');
     try {
       String? otherUserName;
       String? itemStatus;
 
       if (user != null && sellerId != null && buyerId != null) {
         final otherUserId = user!.uid == sellerId ? buyerId : sellerId;
+        debugPrint('[ChatScreen] Fetching counterpart user document for $otherUserId');
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(otherUserId)
             .get()
             .timeout(const Duration(seconds: 2));
         otherUserName = userDoc.data()?['name'];
+        debugPrint('[ChatScreen] Fetching counterpart user finished. Name: $otherUserName');
       }
 
       if (itemId != null) {
+        debugPrint('[ChatScreen] Fetching item document for $itemId');
         final itemDoc = await FirebaseFirestore.instance
             .collection('items')
             .doc(itemId)
             .get()
             .timeout(const Duration(seconds: 2));
         itemStatus = itemDoc.data()?['status'];
+        debugPrint('[ChatScreen] Fetching item finished. Status: $itemStatus');
       }
 
       if (mounted) {
+        debugPrint('[ChatScreen] Updating details state: otherUserName=$otherUserName, itemStatus=$itemStatus');
         setState(() {
           if (otherUserName != null) _otherUserName = otherUserName;
           if (itemStatus != null) _itemStatus = itemStatus;
@@ -337,180 +359,435 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _showCancelDialog() async {
+    final controller = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Transaction?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please provide a reason for cancelling this deal:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: 'e.g., Changed mind, unresponsive partner...',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No, Keep Deal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Please enter a cancellation reason.')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Yes, Cancel Deal'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && controller.text.trim().isNotEmpty && _transactionId != null) {
+      try {
+        await TransactionService.instance.cancelTransaction(
+          transactionId: _transactionId!,
+          actionUserId: user!.uid,
+          roomId: widget.roomId,
+          reason: controller.text.trim(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Transaction successfully cancelled.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to cancel: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadReceipt() async {
+    if (user == null || _transactionId == null) return;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (picked == null) return;
+
+      setState(() => _sending = true);
+      final bytes = await picked.readAsBytes();
+
+      // Compress and upload to storage: path: chat/{roomId}/receipts/
+      final imageUrl = await StorageService.instance.uploadReceiptImage(
+        roomId: widget.roomId,
+        bytes: bytes,
+      );
+
+      // Save to transaction and send message card
+      await TransactionService.instance.uploadPaymentReceipt(
+        transactionId: _transactionId!,
+        roomId: widget.roomId,
+        actionUserId: user!.uid,
+        receiptUrl: imageUrl,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payment receipt uploaded successfully!')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error uploading payment receipt: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload receipt: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Widget _buildTransactionBanner() {
-    if (_transactionId == null || _transactionId!.isEmpty) {
+    debugPrint('[ChatScreen] _buildTransactionBanner logic check: _transactionId=$_transactionId, hasStream=${_transactionStream != null}');
+    if (_transactionId == null || _transactionId!.isEmpty || _transactionStream == null) {
       return const SizedBox.shrink();
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('transactions')
-          .doc(_transactionId)
-          .snapshots(),
+      stream: _transactionStream,
       builder: (context, snapshot) {
+        debugPrint('[ChatScreen] _buildTransactionBanner StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, exists=${snapshot.data?.exists}, hasError=${snapshot.hasError}');
+        if (snapshot.hasError) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.red.shade50,
+            child: Text(
+              'Error loading transaction info: ${snapshot.error}',
+              style: TextStyle(color: Colors.red.shade900, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          );
+        }
         if (!snapshot.hasData || !snapshot.data!.exists) {
           return const SizedBox.shrink();
         }
 
-        final txData = snapshot.data!.data()!;
-        final statusStr = txData['status'] ?? 'accepted';
-        final meetupLocation = txData['meetupLocation'] ?? '';
+        final tx = TransactionModel.fromFirestore(snapshot.data!);
+        final status = tx.status;
+        final meetupLocation = tx.meetupLocation;
+        final meetupLat = tx.meetupLatitude;
+        final meetupLng = tx.meetupLongitude;
+        
+        final buyerMeetupConfirmed = tx.buyerMeetupConfirmed;
+        final sellerMeetupConfirmed = tx.sellerMeetupConfirmed;
+        final receiptUploaded = tx.receiptUploaded;
+        final paymentVerified = tx.paymentVerified;
+        final receiptUrl = tx.receiptUrl;
+        final finalPrice = tx.finalPrice;
+
         final isSeller = user!.uid == _sellerId;
 
-        final status = TransactionStatus.values.firstWhere(
-          (e) => e.name == statusStr,
-          orElse: () => TransactionStatus.accepted,
-        );
-
-        Color bannerColor;
-        Color textColor;
-        String title;
-        String subtitle;
+        Color bannerColor = Colors.white;
+        Color textColor = Colors.black;
+        String title = '';
+        String subtitle = '';
         List<Widget> actions = [];
+
+        final isSafeZone = TransactionService.isSafeZone(meetupLat, meetupLng);
 
         switch (status) {
           case TransactionStatus.accepted:
             bannerColor = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
-            title = 'Deal Accepted!';
-            subtitle = meetupLocation.isNotEmpty
-                ? 'Meetup set at: $meetupLocation'
-                : 'Seller needs to set a meetup location.';
-            if (isSeller) {
-              actions = [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.map, size: 16),
-                  label: const Text('Set Meetup Location'),
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => MeetupLocationScreen(
-                          selected: meetupLocation,
+            title = 'Deal Accepted! 🤝';
+            
+            if (meetupLocation.isEmpty) {
+              subtitle = 'A meetup point needs to be selected to coordinate the transaction.';
+              if (isSeller) {
+                actions = [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.map, size: 16),
+                    label: const Text('Suggest Meetup Location'),
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MeetupLocationScreen(),
                         ),
-                      ),
-                    );
-                    if (result != null && result is Map) {
-                      await TransactionService.instance.setMeetupLocation(
-                        transactionId: _transactionId!,
-                        locationName: result['location'],
-                        latitude: result['latitude'],
-                        longitude: result['longitude'],
                       );
-                    }
-                  },
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () async {
-                    await TransactionService.instance.updateTransactionStatus(
-                      transactionId: _transactionId!,
-                      newStatus: TransactionStatus.meetup_pending,
-                      actionUserId: user!.uid,
-                      roomId: widget.roomId,
-                    );
-                  },
-                  child: const Text('Confirm Meetup'),
-                ),
-              ];
+                      if (result != null && result is Map) {
+                        await TransactionService.instance.suggestMeetupLocation(
+                          transactionId: _transactionId!,
+                          locationName: result['location'],
+                          latitude: result['latitude'],
+                          longitude: result['longitude'],
+                          actionUserId: user!.uid,
+                          roomId: widget.roomId,
+                        );
+                      }
+                    },
+                  ),
+                ];
+              } else {
+                actions = [
+                  const Text('Awaiting seller to suggest meetup location...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                ];
+              }
             } else {
+              final userConfirmed = isSeller ? sellerMeetupConfirmed : buyerMeetupConfirmed;
+              final peerConfirmed = isSeller ? buyerMeetupConfirmed : sellerMeetupConfirmed;
+              
+              subtitle = 'Suggested Meetup: $meetupLocation\n';
+              if (isSafeZone) {
+                subtitle += '🛡️ UTHM Safe Zone Verified (Library/HEPA/Cafes)\n';
+              }
+              subtitle += 'Your confirmation: ${userConfirmed ? "Confirmed ✓" : "Pending"}\n'
+                  'Partner confirmation: ${peerConfirmed ? "Confirmed ✓" : "Pending"}';
+
               actions = [
-                const Text('Awaiting seller to set meetup...', style: TextStyle(fontStyle: FontStyle.italic)),
+                if (!userConfirmed)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.check_circle, size: 16),
+                    label: const Text('Confirm Location'),
+                    onPressed: () async {
+                      await TransactionService.instance.confirmMeetupLocation(
+                        transactionId: _transactionId!,
+                        actionUserId: user!.uid,
+                        roomId: widget.roomId,
+                      );
+                    },
+                  ),
+                if (!userConfirmed) const SizedBox(width: 8),
+                if (isSeller)
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                      side: const BorderSide(color: Colors.blue),
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.map, size: 16),
+                    label: const Text('Suggest Different Location'),
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MeetupLocationScreen(selected: meetupLocation),
+                        ),
+                      );
+                      if (result != null && result is Map) {
+                        await TransactionService.instance.suggestMeetupLocation(
+                          transactionId: _transactionId!,
+                          locationName: result['location'],
+                          latitude: result['latitude'],
+                          longitude: result['longitude'],
+                          actionUserId: user!.uid,
+                          roomId: widget.roomId,
+                        );
+                      }
+                    },
+                  ),
               ];
             }
+
+            actions.add(const SizedBox(width: 8));
+            actions.add(
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                icon: const Icon(Icons.cancel_outlined, size: 16),
+                label: const Text('Cancel Deal'),
+                onPressed: _showCancelDialog,
+              ),
+            );
             break;
 
           case TransactionStatus.meetup_pending:
             bannerColor = Colors.orange.shade50;
             textColor = Colors.orange.shade900;
             title = 'Meetup Confirmed 📍';
-            subtitle = 'Location: $meetupLocation\nUpload payment proof via DuitNow to finalize.';
-            if (!isSeller) {
-              actions = [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.upload_file, size: 16),
-                  label: const Text('Upload Receipt'),
-                  onPressed: _pickImage,
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Confirm Receipt?'),
-                        content: const Text(
-                          'Ensure you have received the item and sent the DuitNow payment before confirming.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Confirm'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) {
-                      await TransactionService.instance.updateTransactionStatus(
-                        transactionId: _transactionId!,
-                        newStatus: TransactionStatus.completed,
-                        actionUserId: user!.uid,
-                        roomId: widget.roomId,
-                      );
-                    }
-                  },
-                  child: const Text('Confirm Received'),
-                ),
-              ];
-            } else {
-              actions = [
-                const Text('Awaiting buyer to complete payment...', style: TextStyle(fontStyle: FontStyle.italic)),
-              ];
+            subtitle = 'Location: $meetupLocation\n';
+            if (isSafeZone) {
+              subtitle += '🛡️ UTHM Safe Zone Verified\n';
             }
+
+            if (!paymentVerified) {
+              if (!receiptUploaded) {
+                subtitle += 'Payment Status: Awaiting DuitNow transfer of RM ${finalPrice.toStringAsFixed(2)}.';
+                if (!isSeller) {
+                  actions = [
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.receipt_long, size: 16),
+                      label: const Text('Upload DuitNow Receipt'),
+                      onPressed: _pickAndUploadReceipt,
+                    ),
+                  ];
+                } else {
+                  actions = [
+                    const Text('Awaiting buyer to upload payment receipt...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                  ];
+                }
+              } else {
+                subtitle += 'Payment Status: Receipt uploaded. Seller verification required.';
+                if (isSeller) {
+                  actions = [
+                    if (receiptUrl != null)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.visibility, size: 16),
+                        label: const Text('View Receipt'),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              content: Image.network(receiptUrl),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Close'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.check_circle, size: 16),
+                      label: const Text('Verify Payment'),
+                      onPressed: () async {
+                        await TransactionService.instance.verifyPayment(
+                          transactionId: _transactionId!,
+                          roomId: widget.roomId,
+                          actionUserId: user!.uid,
+                        );
+                      },
+                    ),
+                  ];
+                } else {
+                  actions = [
+                    const Text('Awaiting seller verification of your receipt...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                  ];
+                }
+              }
+            } else {
+              subtitle += 'Payment Status: Verified! Meet up now to collect your item.';
+              if (!isSeller) {
+                actions = [
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.done_all, size: 16),
+                    label: const Text('Confirm Item Received'),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Confirm Item Collection?'),
+                          content: const Text(
+                            'Please only confirm if you have received the item and are satisfied with it. This action cannot be undone.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Confirm'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await TransactionService.instance.completeTransaction(
+                          transactionId: _transactionId!,
+                          roomId: widget.roomId,
+                          actionUserId: user!.uid,
+                        );
+                      }
+                    },
+                  ),
+                ];
+              } else {
+                actions = [
+                  const Text('Awaiting buyer to confirm receipt of item...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                ];
+              }
+            }
+
             actions.add(const SizedBox(width: 8));
             actions.add(
-              OutlinedButton(
+              OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-                onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Cancel Deal?'),
-                      content: const Text('This will make the item available for other buyers again.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Keep Deal'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                          child: const Text('Cancel Deal'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    await TransactionService.instance.updateTransactionStatus(
-                      transactionId: _transactionId!,
-                      newStatus: TransactionStatus.cancelled,
-                      actionUserId: user!.uid,
-                      roomId: widget.roomId,
-                    );
-                  }
-                },
-                child: const Text('Cancel Deal'),
+                icon: const Icon(Icons.cancel_outlined, size: 16),
+                label: const Text('Cancel Deal'),
+                onPressed: _showCancelDialog,
               ),
             );
             break;
@@ -519,12 +796,18 @@ class _ChatScreenState extends State<ChatScreen> {
             bannerColor = Colors.green.shade50;
             textColor = Colors.green.shade900;
             title = 'Deal Completed 🎉';
-            subtitle = 'Please leave your feedback to help the community.';
+            subtitle = 'Item successfully handed over and payment verified.';
             actions = [
               ElevatedButton.icon(
-                icon: const Icon(Icons.rate_review),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade700,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                icon: const Icon(Icons.rate_review, size: 16),
                 label: const Text('Leave a Review'),
-                onPressed: _showReviewDialog,
+                onPressed: () => _showReviewDialog(),
               ),
             ];
             break;
@@ -533,14 +816,15 @@ class _ChatScreenState extends State<ChatScreen> {
             bannerColor = Colors.red.shade50;
             textColor = Colors.red.shade900;
             title = 'Deal Cancelled ❌';
-            subtitle = 'This transaction was cancelled.';
+            final cancelledBy = tx.cancelledBy;
+            final reason = tx.cancelledReason ?? '';
+            subtitle = 'Cancelled by: ${cancelledBy == user!.uid ? "You" : "Partner"}\nReason: $reason';
             actions = [];
             break;
 
           default:
-            return const SizedBox.shrink();
         }
-
+ 
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
@@ -558,10 +842,10 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 12),
+                style: const TextStyle(color: Colors.black87, fontSize: 12, height: 1.4),
               ),
               if (actions.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(children: actions),
@@ -576,6 +860,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[ChatScreen] build() called. _otherUserName=$_otherUserName, _itemTitle=$_itemTitle');
     if (user == null) {
       return const Scaffold(body: Center(child: Text("Not logged in")));
     }
@@ -645,6 +930,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _messagesStream,
                 builder: (context, snapshot) {
+                  debugPrint('[ChatScreen] Messages StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, count=${snapshot.data?.docs.length}, hasError=${snapshot.hasError}');
                   if (snapshot.hasError) {
                     return Center(child: Text("Error loading messages"));
                   }
@@ -668,6 +954,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       final text = d['text']?.toString() ?? '';
                       final type = d['type']?.toString() ?? 'text';
                       final timestamp = d['createdAt'];
+                      debugPrint('[ChatScreen] Rendering message index=$i, type=$type, text=${text.length > 30 ? text.substring(0, 30) + "..." : text}');
 
                       String timeStr = '';
                       if (timestamp is Timestamp) {

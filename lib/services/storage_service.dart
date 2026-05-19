@@ -191,4 +191,32 @@ class StorageService {
       throw Exception("Chat image upload error: $e");
     }
   }
+
+  /// ---------------------------
+  /// DUITNOW RECEIPT IMAGES (PATH: chat/{roomId}/receipts/)
+  /// ---------------------------
+  Future<String> uploadReceiptImage({
+    required String roomId,
+    required Uint8List bytes,
+  }) async {
+    if (bytes.isEmpty) throw Exception("Empty image data");
+
+    // Compress to save storage/bandwidth on receipts
+    final compressed = _compressImage(bytes);
+    final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = _storage.ref().child('chat/$roomId/receipts/$fileName');
+
+    try {
+      final uploadTask = await ref.putData(
+        compressed,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      if (uploadTask.state != TaskState.success) {
+        throw Exception("Receipt upload failed");
+      }
+      return await ref.getDownloadURL();
+    } catch (e) {
+      throw Exception("Receipt image upload error: $e");
+    }
+  }
 }

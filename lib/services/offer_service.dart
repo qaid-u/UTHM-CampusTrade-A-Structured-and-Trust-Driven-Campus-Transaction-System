@@ -15,8 +15,8 @@ class OfferService {
     required double price,
   }) async {
     final itemDoc = await _db.collection('items').doc(itemId).get();
-    if (itemDoc.exists && itemDoc.data()?['status'] == 'sold') {
-      throw Exception('This item has already been sold.');
+    if (itemDoc.exists && itemDoc.data()?['status'] != 'available') {
+      throw Exception('This item is no longer available.');
     }
 
     final offerRef = _db.collection('offers').doc();

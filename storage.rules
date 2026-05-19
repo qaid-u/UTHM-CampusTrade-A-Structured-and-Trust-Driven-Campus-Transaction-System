@@ -83,10 +83,15 @@ service firebase.storage {
     }
 
     // 5. CHAT IMAGES (for transaction receipts)
-    // Path: /chat/{roomId}/*
+    // Path: /chat/{roomId}/* and /chats/{roomId}/*
     // - Only authenticated users can read/write
     // - Max 5MB per chat image (compressed JPEG receipts)
     match /chat/{roomId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+    }
+
+    match /chats/{roomId}/{allPaths=**} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isImage() && isValidSize(5);
     }
