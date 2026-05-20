@@ -31,10 +31,17 @@ class ChatService {
 
     final ref = _db.collection('chatRooms').doc(roomId);
 
-    final doc = await ref.get().timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => throw Exception('Timeout fetching chat room info'),
-    );
+    DocumentSnapshot<Map<String, dynamic>> doc;
+    try {
+      debugPrint('🔍 Fetching chat room: $roomId (buyerId: $buyerId, sellerId: $sellerId)');
+      doc = await ref.get().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => throw Exception('Timeout fetching chat room info'),
+      );
+    } catch (e) {
+      debugPrint('❌ Error reading chat room document $roomId: $e');
+      rethrow;
+    }
     
     if (!doc.exists) {
       debugPrint('🆕 Creating new chat room: $roomId');
@@ -51,16 +58,26 @@ class ChatService {
         updatedAt: DateTime.now(),
         unreadCounts: {buyerId: 0, sellerId: 0},
       );
-      // CRITICAL: Use set() WITHOUT merge for new documents to trigger 'allow create' rule
-      await ref.set(room.toFirestore());
-      debugPrint('✅ Chat room created successfully');
+      try {
+        // CRITICAL: Use set() WITHOUT merge for new documents to trigger 'allow create' rule
+        await ref.set(room.toFirestore());
+        debugPrint('✅ Chat room created successfully');
+      } catch (e) {
+        debugPrint('❌ Error creating chat room document $roomId: $e');
+        rethrow;
+      }
     } else {
       debugPrint('🔄 Chat room exists, updating metadata');
-      // Update item title and thumbnail in case they changed
-      await ref.update({
-        'itemTitle': itemTitle,
-        'itemThumbnail': itemThumbnail,
-      });
+      try {
+        // Update item title and thumbnail in case they changed
+        await ref.update({
+          'itemTitle': itemTitle,
+          'itemThumbnail': itemThumbnail,
+        });
+      } catch (e) {
+        debugPrint('❌ Error updating chat room document $roomId: $e');
+        rethrow;
+      }
     }
 
     return roomId;
