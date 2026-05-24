@@ -6,12 +6,12 @@ class AppConfigService {
   static final instance = AppConfigService._();
 
   static const _defaultCategories = <String>[
-    'Books',
+    'Textbooks',
     'Electronics',
-    'Clothing',
-    'Furniture',
-    'Stationery',
-    'Other',
+    'Clothes',
+    'Room Items',
+    'Sports',
+    'Others',
   ];
 
   static const _defaultConditions = <String>[

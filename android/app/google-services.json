@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "143669552877",
+    "project_id": "uthmcampustradedatabase",
+    "storage_bucket": "uthmcampustradedatabase.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143669552877:android:4308a359ec14ce7003cee4",
+        "android_client_info": {
+          "package_name": "com.uthmcampustrade.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAu6R7GpnY6CfMjS-sROO4WLzh5joN87Ok"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143669552877:android:0812cbcb0ff24b1303cee4",
+        "android_client_info": {
+          "package_name": "my.edu.uthm.campustrade"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAu6R7GpnY6CfMjS-sROO4WLzh5joN87Ok"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/notification_model.dart';
-
+import 'fcm_service.dart';
 class NotificationService {
   NotificationService._();
 
@@ -52,9 +54,16 @@ class NotificationService {
     });
 
     debugPrint('Notification created for user $userId: $title - $body');
-
-    // TODO: Add Firebase Cloud Messaging (FCM) push notification here
-    // await _sendPushNotification(userId, title, body);
+    
+    // Send push notification via FCM
+    // Runs asynchronously; failures are logged silently
+    unawaited(
+      FCMService.instance.sendPush(
+        userId: userId,
+        title: title,
+        body: body,
+      ),
+    );
   }
 
   Future<void> markAsRead(String notificationId) async {
@@ -148,7 +157,8 @@ class NotificationService {
     );
   }
 
-  // TODO: Implement Firebase Cloud Messaging (FCM) for push notifications
+  // TODO: Commented out — FCM push is now handled by FCMService.sendPush
+  // This block is kept for reference only
   /*
   Future<void> _sendPushNotification(
     String userId, 

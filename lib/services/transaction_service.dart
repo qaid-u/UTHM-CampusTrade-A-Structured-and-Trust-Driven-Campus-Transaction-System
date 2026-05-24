@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/transaction_model.dart';
 import '../models/offer_model.dart';
 import '../models/message_model.dart';
 import 'chat_service.dart';
 import 'notification_service.dart';
+import 'trust_score_service.dart';
 
 class TransactionService {
   TransactionService._();
@@ -716,5 +719,9 @@ class TransactionService {
       itemId: tx.itemId,
       chatRoomId: roomId,
     );
+
+    // Trigger trust score recalculation for both buyer and seller
+    unawaited(TrustScoreService.instance.recalculateForUser(tx.buyerId));
+    unawaited(TrustScoreService.instance.recalculateForUser(tx.sellerId));
   }
 }

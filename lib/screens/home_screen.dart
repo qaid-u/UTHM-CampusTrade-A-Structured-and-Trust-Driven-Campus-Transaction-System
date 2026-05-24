@@ -36,14 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _lastLoadTime;
   Stream<List<NotificationModel>>? _notificationsStream;
 
-  final categories = const [
-    'Textbooks',
-    'Electronics',
-    'Clothes',
-    'Room Items',
-    'Sports',
-    'Others',
-  ];
+  List<String> get _categories => AppConfigService.instance.categories;
 
   @override
   void initState() {
@@ -457,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onSelected: (_) => _onFilterChange(),
           ),
           const SizedBox(width: 8),
-          ...categories.map(
+          ..._categories.map(
             (c) => CategoryChip(
               label: c,
               selected: _category == c,

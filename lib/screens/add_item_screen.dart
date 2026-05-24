@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/storage_service.dart';
 import '../services/item_service.dart';
+import '../services/app_config_service.dart';
 import '../constants/app_defaults.dart';
 import '../widgets/feedback_helper.dart';
 import 'meetup_location_screen.dart';
@@ -31,6 +32,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
   String? _selectedMeetupLocation;
   double? _meetupLatitude;
   double? _meetupLongitude;
+  
+  String? _selectedCategory;
+  String? _selectedCondition;
 
   Future<void> pickImage() async {
     if (_images.length >= 4) {
@@ -67,6 +71,38 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
   }
 
+  Future<void> _pickCategory() async {
+    final categories = AppConfigService.instance.categories;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => ListView(
+        children: categories.map((cat) => ListTile(
+          title: Text(cat),
+          onTap: () => Navigator.pop(context, cat),
+        )).toList(),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _selectedCategory = selected);
+    }
+  }
+
+  Future<void> _pickCondition() async {
+    final conditions = AppConfigService.instance.conditions;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => ListView(
+        children: conditions.map((cond) => ListTile(
+          title: Text(cond),
+          onTap: () => Navigator.pop(context, cond),
+        )).toList(),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _selectedCondition = selected);
+    }
+  }
+
   Future<void> uploadItem() async {
     // Validate inputs
     if (_title.text.trim().isEmpty) {
@@ -94,6 +130,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
         context,
         "Please enter a valid price (greater than 0)",
       );
+      return;
+    }
+
+    if (_selectedCategory == null) {
+      FeedbackHelper.showWarning(context, "Please select a category");
+      return;
+    }
+
+    if (_selectedCondition == null) {
+      FeedbackHelper.showWarning(context, "Please select a condition");
       return;
     }
 
@@ -160,8 +206,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
         title: _title.text.trim(),
         description: _desc.text.trim(),
         price: price,
-        category: 'Others', // TODO: Add category picker
-        condition: 'Used', // TODO: Add condition picker
+        category: _selectedCategory!,
+        condition: _selectedCondition!,
         meetupLocation: _selectedMeetupLocation ?? 'Campus Meetup',
         meetupLatitude: _meetupLatitude ?? 1.8538, // Default: UTHM center
         meetupLongitude: _meetupLongitude ?? 103.0863,
@@ -242,6 +288,48 @@ class _AddItemScreenState extends State<AddItemScreen> {
             TextField(
               controller: _desc,
               decoration: const InputDecoration(labelText: "Description"),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Category Picker
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.category_rounded,
+                  color: _selectedCategory != null ? Colors.green : Colors.blue,
+                ),
+                title: Text(
+                  _selectedCategory ?? 'Select category',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _selectedCategory != null ? Colors.black87 : Colors.grey[600],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickCategory,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Condition Picker
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  Icons.build_rounded,
+                  color: _selectedCondition != null ? Colors.green : Colors.blue,
+                ),
+                title: Text(
+                  _selectedCondition ?? 'Select condition',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _selectedCondition != null ? Colors.black87 : Colors.grey[600],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickCondition,
+              ),
             ),
 
             const SizedBox(height: 10),

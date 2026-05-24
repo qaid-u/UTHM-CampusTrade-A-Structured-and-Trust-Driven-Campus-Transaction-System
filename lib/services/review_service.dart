@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'trust_score_service.dart';
 
 class ReviewService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -21,5 +24,8 @@ class ReviewService {
       'createdAt': FieldValue.serverTimestamp(),
       // The backend/Cloud Function will scan this collection to update aggregate trustScores securely
     });
+
+    // Trigger trust score recalculation for the reviewee
+    unawaited(TrustScoreService.instance.recalculateForUser(revieweeId));
   }
 }

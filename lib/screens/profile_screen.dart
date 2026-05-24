@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +8,6 @@ import 'package:image_picker/image_picker.dart';
 import '../constants/app_defaults.dart';
 import '../screens/item_detail_screen.dart';
 import '../services/auth_service.dart';
-import '../services/item_service.dart';
 import '../services/storage_service.dart';
 import '../models/item_model.dart';
 import '../widgets/feedback_helper.dart';
@@ -30,33 +30,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loadingItems = true;
   bool _uploadingImage = false;
 
+  // Realtime user document subscription for trust score updates
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _userDocSubscription;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshProfile();
     });
-    _loadProfileData();
+    _setupUserDocListener();
     _loadMyItems();
   }
 
-  Future<void> _loadProfileData() async {
+  /// Real-time listener for user document — auto-updates trust score, rating, etc.
+  void _setupUserDocListener() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    try {
-      final doc = await usersRef.doc(user.uid).get();
-      if (doc.exists && mounted) {
-        setState(() {
-          _userData = doc.data();
-          _loadingProfile = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _loadingProfile = false);
-      }
-    }
+    _userDocSubscription = usersRef.doc(user.uid).snapshots().listen(
+      (doc) {
+        if (!mounted) return;
+        if (doc.exists) {
+          setState(() {
+            _userData = doc.data();
+            _loadingProfile = false;
+          });
+        }
+      },
+      onError: (e) {
+        debugPrint('User doc stream error: $e');
+        if (mounted) {
+          setState(() => _loadingProfile = false);
+        }
+      },
+    );
   }
 
   Future<void> _loadMyItems() async {
@@ -64,12 +73,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null) return;
 
     try {
-      final items = await ItemService.instance.getItems(limit: 50);
+      // OPTIMIZED: Use sellerId query instead of fetching all items
+      final items = await FirebaseFirestore.instance
+          .collection('items')
+          .where('sellerId', isEqualTo: user.uid)
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .get()
+          .timeout(const Duration(seconds: 5));
 
-      // Filter only my items
-      final myItems = items['items'] as List<ItemModel>;
-      final filtered = myItems
-          .where((item) => item.sellerId == user.uid)
+      final filtered = items.docs
+          .map((doc) => ItemModel.fromFirestore(doc))
           .toList();
 
       if (mounted) {
@@ -87,10 +101,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _refreshProfile() async {
     setState(() {
-      _loadingProfile = true;
       _loadingItems = true;
     });
-    await Future.wait([_loadProfileData(), _loadMyItems()]);
+    await _loadMyItems();
+  }
+
+  @override
+  void dispose() {
+    _userDocSubscription?.cancel();
+    super.dispose();
   }
 
   // -------------------------
@@ -175,7 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       // Reload profile to show new image
-      await _loadProfileData();
+      // Realtime stream listener will auto-update
     } catch (e) {
       debugPrint('Profile image upload error: $e');
 
@@ -249,7 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       FeedbackHelper.showSuccess(context, "$field updated successfully!");
 
       // Reload profile to reflect changes
-      await _loadProfileData();
+      // Realtime stream listener will auto-update
     } catch (e) {
       if (!mounted) return;
       FeedbackHelper.hideLoading(context);
@@ -288,6 +307,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       FeedbackHelper.hideLoading(context);
       FeedbackHelper.showError(context, "Failed to logout: $e");
     }
+  }
+
+  /// Builds a star rating string from a numeric rating value
+  String _buildStarRating(double rating) {
+    final fullStars = rating.floor();
+    final hasHalfStar = (rating - fullStars) >= 0.5;
+    final emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    return '${'★' * fullStars}${hasHalfStar ? '½' : ''}${'☆' * emptyStars}';
+  }
+
+  /// Returns a color based on trust score value
+  Color _getTrustScoreColor(double score) {
+    if (score >= 80) return Colors.green;
+    if (score >= 50) return Colors.orange;
+    return Colors.red;
   }
 
   @override
@@ -445,6 +479,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 trailing: const Icon(Icons.edit),
                 onTap: () => editField("bio", bio),
               ),
+
+              // Trust Score Section
+              if (data['trustScore'] != null) ...[
+                const Divider(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    "Trust Profile",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(Icons.star_rounded, color: Colors.amber),
+                  title: Text(
+                    "${_buildStarRating((data['rating'] ?? 0).toDouble())}  Rating: ${(data['rating'] ?? 0).toStringAsFixed(1)}",
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(Icons.check_circle_rounded, color: Colors.green),
+                  title: Text("Completed Transactions: ${data['completedTransactions'] ?? 0}"),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Trust Score: ${(data['trustScore'] ?? 0).toStringAsFixed(1)}/100",
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: ((data['trustScore'] ?? 0).toDouble()) / 100,
+                          minHeight: 10,
+                          backgroundColor: Colors.grey.shade200,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _getTrustScoreColor((data['trustScore'] ?? 0).toDouble()),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               const Divider(),
 

@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'home_screen.dart';
 import 'chats_screen.dart';
@@ -33,96 +31,6 @@ class _MainShellState extends State<MainShell> {
       TransactionHistoryScreen(),
       ProfileScreen(),
     ];
-
-    _generateSilentDemoData();
-  }
-
-  Future<void> _generateSilentDemoData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final db = FirebaseFirestore.instance;
-      final roomDoc = await db.collection('chatRooms').doc('mock_room_123').get();
-      
-      // If already exists and has participantIds, do not overwrite or re-create
-      if (roomDoc.exists && roomDoc.data()?['participantIds'] != null) {
-        debugPrint('Silent Demo Data: Already exists, skipping creation.');
-        return;
-      }
-
-      debugPrint('Silent Demo Data: Generating test transaction and chat room documents...');
-
-      // 1. Ensure mock buyer exists
-      await db.collection('users').doc('mock_buyer_123').set({
-        'uid': 'mock_buyer_123',
-        'name': 'Ahmad (Test Buyer)',
-        'studentId': 'AI210099',
-        'email': 'ahmad_test@student.uthm.edu.my',
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // 2. Ensure mock item exists and status is available
-      await db.collection('items').doc('mock_item_123').set({
-        'id': 'mock_item_123',
-        'title': 'Test UTHM T-Shirt',
-        'description': 'A beautiful test shirt for CampusTrade testing.',
-        'price': 50.0,
-        'sellerId': user.uid,
-        'images': ['https://picsum.photos/200'],
-        'status': 'available',
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // 3. Ensure mock chat room exists
-      await db.collection('chatRooms').doc('mock_room_123').set({
-        'id': 'mock_room_123',
-        'itemId': 'mock_item_123',
-        'itemTitle': 'Test UTHM T-Shirt',
-        'itemThumbnail': 'https://picsum.photos/200',
-        'buyerId': 'mock_buyer_123',
-        'sellerId': user.uid,
-        'participantIds': [user.uid, 'mock_buyer_123'],
-        'unreadCounts': {user.uid: 0, 'mock_buyer_123': 0},
-        'lastMessage': 'RM 50.00',
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // 4. Create a mock offer document in pending state
-      await db.collection('offers').doc('mock_offer_123').set({
-        'id': 'mock_offer_123',
-        'roomId': 'mock_room_123',
-        'itemId': 'mock_item_123',
-        'buyerId': 'mock_buyer_123',
-        'sellerId': user.uid,
-        'price': 50.0,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // 5. Add the offer message inside the chat room messages subcollection
-      await db
-          .collection('chatRooms')
-          .doc('mock_room_123')
-          .collection('messages')
-          .doc('mock_msg_123')
-          .set({
-        'id': 'mock_msg_123',
-        'senderId': 'mock_buyer_123',
-        'type': 'offer',
-        'text': 'RM 50.00',
-        'offerId': 'mock_offer_123',
-        'offerPrice': 50.0,
-        'offerStatus': 'pending',
-        'itemId': 'mock_item_123',
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      debugPrint('Silent Demo Data: Successfully populated test documents!');
-    } catch (e) {
-      debugPrint('Silent Demo Data Error: $e');
-    }
   }
 
   void _onTab(int i) {

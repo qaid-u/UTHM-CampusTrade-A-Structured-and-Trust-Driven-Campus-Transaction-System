@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../constants/app_defaults.dart';
+import 'fcm_service.dart';
 
 class AuthService {
   AuthService._();
@@ -42,6 +43,10 @@ class AuthService {
         'email': email,
         'bio': '',
         'profileImage': AppDefaults.defaultProfileImage,
+        'fcmToken': await FCMService.instance.getToken() ?? '',
+        'trustScore': 0.0,
+        'completedTransactions': 0,
+        'rating': 0.0,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -90,11 +95,16 @@ class AuthService {
       await ref.set({
         'profileImage': doc['profileImage'] ?? AppDefaults.defaultProfileImage,
         'bio': doc['bio'] ?? '',
+        'fcmToken': await FCMService.instance.getToken() ?? '',
       }, SetOptions(merge: true));
     }
   }
 
   Future<void> logout() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      await FCMService.instance.removeToken(user.uid);
+    }
     await _auth.signOut();
   }
 }

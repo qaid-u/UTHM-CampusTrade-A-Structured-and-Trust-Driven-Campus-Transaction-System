@@ -161,6 +161,31 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
           final rooms = snapshot.data!.docs;
           debugPrint('Found ${rooms.length} chat rooms for user ${user.uid}');
+          
+          // Sort by updatedAt client-side (avoids composite index requirement)
+          rooms.sort((a, b) {
+            final aVal = a.data()['updatedAt'];
+            final bVal = b.data()['updatedAt'];
+          
+            DateTime? aTime;
+            if (aVal is Timestamp) {
+              aTime = aVal.toDate();
+            } else if (aVal is DateTime) {
+              aTime = aVal;
+            }
+          
+            DateTime? bTime;
+            if (bVal is Timestamp) {
+              bTime = bVal.toDate();
+            } else if (bVal is DateTime) {
+              bTime = bVal;
+            }
+          
+            if (aTime == null && bTime == null) return 0;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return bTime.compareTo(aTime);
+          });
 
           if (rooms.isEmpty) {
             return Center(
@@ -322,11 +347,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Stream<QuerySnapshot<Map<String, dynamic>>> _getChatRoomsStream(
     String userId,
   ) {
+    // No orderBy to avoid requiring a composite index.
+    // Sorting is done client-side in the StreamBuilder builder.
     return FirebaseFirestore.instance
         .collection('chatRooms')
         .where('participantIds', arrayContains: userId)
-        .orderBy('updatedAt', descending: true)
-        .limit(30) // Reduced from 50 for faster loading
+        .limit(30)
         .snapshots();
   }
 
