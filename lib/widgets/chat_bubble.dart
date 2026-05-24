@@ -50,7 +50,7 @@ class ChatBubble extends StatelessWidget {
             border: Border.all(color: Colors.green.shade200),
             boxShadow: [
               BoxShadow(
-                color: Colors.green.withOpacity(0.05),
+                color: Colors.green.withValues(alpha: 0.05),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -91,7 +91,7 @@ class ChatBubble extends StatelessWidget {
               border: Border.all(color: Colors.amber.shade300),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.amber.withOpacity(0.1),
+                  color: Colors.amber.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -119,7 +119,20 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
-    return Column(
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(isMe ? 30.0 : -30.0, 0) * (1 - value),
+            child: child,
+          ),
+        );
+      },
+      child: Column(
       crossAxisAlignment: isMe
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
@@ -146,7 +159,7 @@ class ChatBubble extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -224,6 +237,7 @@ class ChatBubble extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

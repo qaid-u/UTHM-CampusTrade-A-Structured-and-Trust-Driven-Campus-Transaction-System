@@ -189,13 +189,6 @@ class _AddItemScreenState extends State<AddItemScreen> {
       return;
     }
 
-    // Check listing limit for free users.
-    final canCreate = await SubscriptionService.instance.canCreateListing();
-    if (!canCreate) {
-      _showListingLimitDialog();
-      return;
-    }
-
     setState(() => _loading = true);
 
     try {
@@ -231,6 +224,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
       }
 
       final userData = userDoc.data()!;
+
+      // Check listing limit for free users.
+      final canCreate = await SubscriptionService.canCreateListing(userData);
+      if (!canCreate) {
+        if (!mounted) return;
+        FeedbackHelper.hideLoading(context);
+        _showListingLimitDialog();
+        return;
+      }
+
       final sellerName = userData['name'] ?? 'Unknown';
       final sellerImage =
           userData['profileImage'] ?? AppDefaults.defaultProfileImage;
@@ -265,7 +268,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         meetupLatitude: _meetupLatitude ?? 1.8538, // Default: UTHM center
         meetupLongitude: _meetupLongitude ?? 103.0863,
         images: imageUrls,
-        isBoosted: SubscriptionService.instance.isPremium,
+        isBoosted: SubscriptionService.isPremiumActive(userData),
       );
 
       debugPrint('Item saved to Firestore with seller snapshot');

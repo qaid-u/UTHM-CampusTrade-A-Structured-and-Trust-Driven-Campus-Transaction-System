@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Add timeout to prevent hanging
       final result = await ItemService.instance
-          .getItems(
+          .getHomeFeed(
             category: _category,
             meetupLocation: _meetupLocation,
             limit: batchSize,
@@ -277,16 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final filtered = _filter(_items);
 
-    // Sort: boosted items first, then by newest.
-    final sorted = List<ItemModel>.from(filtered)
-      ..sort((a, b) {
-        if (a.isBoosted != b.isBoosted) {
-          return a.isBoosted ? -1 : 1;
-        }
-        return b.createdAt.compareTo(a.createdAt);
-      });
-
-    if (sorted.isEmpty && !_loading) {
+    if (filtered.isEmpty && !_loading) {
       return _emptyState();
     }
 
@@ -307,9 +298,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
-        itemCount: sorted.length + (_hasMore && _isReloading ? 1 : 0),
+        itemCount: filtered.length + (_hasMore && _isReloading ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index >= sorted.length) {
+          if (index >= filtered.length) {
             // Loading indicator at bottom
             return Padding(
               padding: const EdgeInsets.all(20),
@@ -321,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          final item = sorted[index];
+          final item = filtered[index];
 
           return ItemCard(
             item: item,

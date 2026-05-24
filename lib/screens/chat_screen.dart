@@ -14,6 +14,7 @@ import 'meetup_location_screen.dart';
 import 'seller_profile_screen.dart';
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
+import '../services/offer_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -32,8 +33,12 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sellerId;
   String? _buyerId;
   String? _itemTitle;
+  String? _itemId;
   String? _otherUserName;
   String? _itemStatus;
+  String? _itemThumbnail;
+  double _itemPrice = 0.0;
+  String? _itemSellerName;
   String? _transactionId;
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _transactionStream;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roomSubscription;
@@ -85,6 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _sellerId = sellerId;
           _buyerId = buyerId;
           _itemTitle = itemTitle;
+          _itemId = itemId;
           if (transactionId != _transactionId) {
             debugPrint('[ChatScreen] _listenChatRoomInfo: transactionId changed from $_transactionId to $transactionId');
             _transactionId = transactionId;
@@ -136,7 +142,11 @@ class _ChatScreenState extends State<ChatScreen> {
             .doc(itemId)
             .get()
             .timeout(const Duration(seconds: 2));
-        itemStatus = itemDoc.data()?['status'];
+        final data = itemDoc.data();
+        itemStatus = data?['status'];
+        _itemThumbnail = data?['thumbnail'] ?? '';
+        _itemPrice = (data?['price'] ?? 0.0).toDouble();
+        _itemSellerName = data?['sellerName'] ?? '';
         debugPrint('[ChatScreen] Fetching item finished. Status: $itemStatus');
       }
 
@@ -468,6 +478,179 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Widget _buildItemHeaderCard() {
+    if (_itemThumbnail == null || _itemThumbnail!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                _itemThumbnail ?? '',
+                width: 80,
+                height: 80,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.grey.shade200,
+                  child: Icon(Icons.image, size: 32, color: Colors.grey.shade400),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_itemTitle ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  'RM ${_itemPrice.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    _buildItemStatusChip(_itemStatus ?? 'available'),
+                    if (user!.uid == _buyerId && (_itemSellerName ?? '').isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text('by $_itemSellerName', style: TextStyle(fontSize: 11, color: Colors.grey.shade600), overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ],
+                ),
+                if (user!.uid == _buyerId && _itemStatus != 'sold' && _transactionId == null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Center(
+                      child: SizedBox(
+                        height: 36,
+                        child: ElevatedButton.icon(
+                          onPressed: _showMakeOfferDialog,
+                          icon: const Icon(Icons.local_offer, size: 16),
+                          label: const Text('Offer', style: TextStyle(fontSize: 13)),
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.orange.shade600,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItemStatusChip(String status) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    switch (status) {
+      case 'available':
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade800;
+        label = 'Available';
+        break;
+      case 'sold':
+        bgColor = Colors.red.shade50;
+        textColor = Colors.red.shade800;
+        label = 'Sold';
+        break;
+      case 'reserved':
+        bgColor = Colors.orange.shade50;
+        textColor = Colors.orange.shade800;
+        label = 'Reserved';
+        break;
+      default:
+        bgColor = Colors.grey.shade100;
+        textColor = Colors.grey.shade800;
+        label = status;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMakeOfferDialog() async {
+    if (_itemTitle == null || _itemId == null) return;
+    final controller = TextEditingController();
+    final result = await showDialog<double>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Make Offer'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: 'Enter your offer price', prefixText: 'RM '),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, double.tryParse(controller.text)),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result <= 0 || !mounted) return;
+    try {
+      await OfferService.createOffer(
+        roomId: widget.roomId,
+        itemId: _itemId!,
+        itemTitle: _itemTitle!,
+        buyerId: user!.uid,
+        sellerId: _sellerId!,
+        price: result,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Offer sent!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send offer: $e')),
+        );
+      }
     }
   }
 
@@ -931,7 +1114,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     : "Buying: ${_itemTitle!}",
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontWeight: FontWeight.normal,
                 ),
                 maxLines: 1,
@@ -944,6 +1127,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             _buildTransactionBanner(),
+            _buildItemHeaderCard(),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _messagesStream,

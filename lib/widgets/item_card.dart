@@ -17,7 +17,20 @@ class ItemCard extends StatelessWidget {
     final imageUrl = item.thumbnail;
     final hasImage = imageUrl.isNotEmpty;
 
-    return DecoratedBox(
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadii.card),
         boxShadow: AppShadows.softBlue,
@@ -155,6 +168,7 @@ class ItemCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

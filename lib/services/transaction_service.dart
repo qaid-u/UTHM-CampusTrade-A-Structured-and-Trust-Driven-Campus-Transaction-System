@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/transaction_model.dart';
 import '../models/offer_model.dart';
 import '../models/message_model.dart';
@@ -286,21 +287,30 @@ class TransactionService {
     // Commit atomic write batch
     await batch.commit();
 
-    // Trigger notification tasks
-    await Future.wait(notifyTasks);
+    // Trigger notification tasks (isolated — failures do NOT break transaction)
+    try {
+      await Future.wait(notifyTasks);
+    } catch (e) {
+      debugPrint('[TransactionService] Rejection notifications failed (non-fatal): $e');
+    }
 
-    // Notify accepted buyer
-    await NotificationService.instance.notifyUser(
-      userId: buyerId,
-      title: "Offer Accepted 🎉",
-      body: "Seller accepted your offer of RM ${price.toStringAsFixed(2)}!",
-      type: 'system',
-      itemId: itemId,
-      chatRoomId: roomId,
-    );
+    // Notify accepted buyer (isolated)
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: buyerId,
+        title: "Offer Accepted 🎉",
+        body: "Seller accepted your offer of RM ${price.toStringAsFixed(2)}!",
+        type: 'system',
+        itemId: itemId,
+        chatRoomId: roomId,
+      );
+    } catch (e) {
+      debugPrint('[TransactionService] Accepted notification failed (non-fatal): $e');
+    }
   }
 
   /// Synchronizes transaction state with items, offers, and chatRooms
+  /// All state mutations happen in a single atomic batch.
   Future<void> syncTransactionState({
     required String transactionId,
     required TransactionStatus status,
@@ -309,6 +319,7 @@ class TransactionService {
     required String actionUserId,
     String? cancelledBy,
     String? cancelledReason,
+    bool includeCompletedAt = false,
   }) async {
     final batch = _firestore.batch();
     final txRef = _transactions.doc(transactionId);
@@ -321,6 +332,10 @@ class TransactionService {
     if (status == TransactionStatus.cancelled) {
       if (cancelledBy != null) updates['cancelledBy'] = cancelledBy;
       if (cancelledReason != null) updates['cancelledReason'] = cancelledReason;
+    }
+
+    if (includeCompletedAt) {
+      updates['completedAt'] = FieldValue.serverTimestamp();
     }
 
     batch.update(txRef, updates);
@@ -520,14 +535,18 @@ class TransactionService {
       );
 
       final otherUserId = actionUserId == updatedTx.buyerId ? updatedTx.sellerId : updatedTx.buyerId;
-      await NotificationService.instance.notifyUser(
-        userId: otherUserId,
-        title: "Meetup Confirmed 📍",
-        body: "Meetup scheduled at ${updatedTx.meetupLocation}",
-        type: 'transaction_update',
-        itemId: updatedTx.itemId,
-        chatRoomId: roomId,
-      );
+      try {
+        await NotificationService.instance.notifyUser(
+          userId: otherUserId,
+          title: "Meetup Confirmed 📍",
+          body: "Meetup scheduled at ${updatedTx.meetupLocation}",
+          type: 'transaction_update',
+          itemId: updatedTx.itemId,
+          chatRoomId: roomId,
+        );
+      } catch (e) {
+        debugPrint('[TransactionService] Meetup notification failed (non-fatal): $e');
+      }
     }
   }
 
@@ -610,14 +629,18 @@ class TransactionService {
       type: 'transaction_update',
     );
 
-    await NotificationService.instance.notifyUser(
-      userId: tx.buyerId,
-      title: "Payment Verified",
-      body: "Seller verified your payment. You can now confirm item collection.",
-      type: 'transaction_update',
-      itemId: tx.itemId,
-      chatRoomId: roomId,
-    );
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: tx.buyerId,
+        title: "Payment Verified",
+        body: "Seller verified your payment. You can now confirm item collection.",
+        type: 'transaction_update',
+        itemId: tx.itemId,
+        chatRoomId: roomId,
+      );
+    } catch (e) {
+      debugPrint('[TransactionService] Payment verification notification failed (non-fatal): $e');
+    }
   }
 
   /// Cancellation logic: buyer or seller can cancel BEFORE completion
@@ -659,14 +682,18 @@ class TransactionService {
       type: 'transaction_update',
     );
 
-    await NotificationService.instance.notifyUser(
-      userId: otherUserId,
-      title: "Transaction Cancelled",
-      body: "The deal for ${tx.itemTitle} was cancelled.",
-      type: 'transaction_update',
-      itemId: tx.itemId,
-      chatRoomId: roomId,
-    );
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: otherUserId,
+        title: "Transaction Cancelled",
+        body: "The deal for ${tx.itemTitle} was cancelled.",
+        type: 'transaction_update',
+        itemId: tx.itemId,
+        chatRoomId: roomId,
+      );
+    } catch (e) {
+      debugPrint('[TransactionService] Cancellation notification failed (non-fatal): $e');
+    }
   }
 
   /// Completion logic: ONLY buyer can finalize completion
@@ -697,12 +724,8 @@ class TransactionService {
       roomId: roomId,
       itemId: tx.itemId,
       actionUserId: actionUserId,
+      includeCompletedAt: true,
     );
-
-    await txRef.update({
-      'completedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
 
     await sendTransactionSystemMessage(
       roomId: roomId,
@@ -711,17 +734,25 @@ class TransactionService {
       type: 'rating_prompt',
     );
 
-    await NotificationService.instance.notifyUser(
-      userId: tx.sellerId,
-      title: "Transaction Completed 🎉",
-      body: "Buyer confirmed receipt of the item.",
-      type: 'transaction_update',
-      itemId: tx.itemId,
-      chatRoomId: roomId,
-    );
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: tx.sellerId,
+        title: "Transaction Completed 🎉",
+        body: "Buyer confirmed receipt of the item.",
+        type: 'transaction_update',
+        itemId: tx.itemId,
+        chatRoomId: roomId,
+      );
+    } catch (e) {
+      debugPrint('[TransactionService] Completion notification failed (non-fatal): $e');
+    }
 
     // Trigger trust score recalculation for both buyer and seller
-    unawaited(TrustScoreService.instance.recalculateForUser(tx.buyerId));
-    unawaited(TrustScoreService.instance.recalculateForUser(tx.sellerId));
+    try {
+      unawaited(TrustScoreService.instance.recalculateForUser(tx.buyerId));
+      unawaited(TrustScoreService.instance.recalculateForUser(tx.sellerId));
+    } catch (e) {
+      debugPrint('[TransactionService] Trust score update triggered (non-fatal): $e');
+    }
   }
 }

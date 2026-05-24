@@ -12,6 +12,7 @@ import '../services/storage_service.dart';
 import '../models/item_model.dart';
 import '../widgets/feedback_helper.dart';
 import '../widgets/premium_badge.dart';
+import '../services/subscription_service.dart';
 import 'premium_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -389,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           shape: BoxShape.circle,
                         ),
                         child: const Center(
@@ -538,7 +539,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               if (data['subscriptionTier'] == 'premium' &&
-                  data['premiumActive'] == true) ...[                
+                  SubscriptionService.isPremiumActive(data)) ...[
                 ListTile(
                   leading: Icon(
                     Icons.verified_rounded,

@@ -8,6 +8,7 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_service.dart';
 import '../widgets/premium_badge.dart';
+import '../services/subscription_service.dart';
 import 'chat_screen.dart';
 import 'seller_profile_screen.dart';
 
@@ -273,8 +274,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     final sellerData = snap.data;
                     final sellerName = sellerData?['name'] ?? 'Unknown';
                     final studentId = sellerData?['studentId'] ?? '';
-                    final isPremium = sellerData?['subscriptionTier'] == 'premium' &&
-                        sellerData?['premiumActive'] == true;
+                    final isPremium = SubscriptionService.isPremiumActive(sellerData);
                                 
                     final profileImage = sellerData?['profileImage'] ?? '';
                     

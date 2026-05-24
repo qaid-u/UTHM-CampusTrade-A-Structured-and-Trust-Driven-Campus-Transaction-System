@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'premium_badge.dart';
+import '../services/subscription_service.dart';
 
 class ChatRoomTile extends StatefulWidget {
   final Map<String, dynamic> room;
@@ -54,8 +55,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
         setState(() {
           _otherUserName = userDoc.data()?['name'] ?? 'Unknown User';
           _otherIsPremium =
-              userDoc.data()?['subscriptionTier'] == 'premium' &&
-                  userDoc.data()?['premiumActive'] == true;
+              SubscriptionService.isPremiumActive(userDoc.data());
           _itemStatus = itemDoc.data()?['status'] ?? 'available';
           _isLoading = false;
         });

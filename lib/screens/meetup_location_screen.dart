@@ -68,7 +68,9 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
       if (permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse) {
         final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high, // TEMP: Keep for backward compat
+          locationSettings: LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
         );
         final userLatLng = LatLng(position.latitude, position.longitude);
         if (mounted) {

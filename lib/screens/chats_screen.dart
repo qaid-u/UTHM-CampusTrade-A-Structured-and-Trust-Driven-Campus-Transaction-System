@@ -356,36 +356,5 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .snapshots();
   }
 
-  Widget _buildTimestamp(dynamic timestamp) {
-    if (timestamp == null) return const SizedBox.shrink();
 
-    DateTime time;
-    if (timestamp is Timestamp) {
-      time = timestamp.toDate();
-    } else if (timestamp is DateTime) {
-      time = timestamp;
-    } else {
-      return const SizedBox.shrink();
-    }
-
-    final now = DateTime.now();
-    final difference = now.difference(time);
-    String timeText;
-
-    if (difference.inDays == 0) {
-      timeText =
-          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    } else if (difference.inDays == 1) {
-      timeText = 'Yesterday';
-    } else if (difference.inDays < 7) {
-      timeText = '${difference.inDays}d';
-    } else {
-      timeText = '${time.day}/${time.month}';
-    }
-
-    return Text(
-      timeText,
-      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-    );
-  }
 }

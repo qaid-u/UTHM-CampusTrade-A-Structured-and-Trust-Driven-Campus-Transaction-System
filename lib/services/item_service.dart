@@ -6,8 +6,73 @@ class ItemService {
   ItemService._();
   static final ItemService instance = ItemService._();
 
-  final _db = FirebaseFirestore.instance;
   final _itemsRef = FirebaseFirestore.instance.collection('items');
+
+  /// Get paginated items for home feed — DETERMINISTIC sort.
+  ///
+  /// Sort order (enforced by service layer, NOT in UI):
+  /// 1. Boosted items first (by boostedAt DESC, then createdAt DESC)
+  /// 2. Non-boosted items (by createdAt DESC)
+  Future<Map<String, dynamic>> getHomeFeed({
+    String? category,
+    String? meetupLocation,
+    int limit = 15,
+    DocumentSnapshot? lastDocument,
+  }) async {
+    try {
+      Query<Map<String, dynamic>> query = _itemsRef;
+      query = query.where('status', isEqualTo: 'available');
+      query = query.orderBy('createdAt', descending: true);
+      query = query.limit(limit);
+
+      if (category != null && category.isNotEmpty) {
+        query = query.where('category', isEqualTo: category);
+      }
+      if (meetupLocation != null && meetupLocation.isNotEmpty) {
+        query = query.where('meetupLocation', isEqualTo: meetupLocation);
+      }
+      if (lastDocument != null) {
+        query = query.startAfterDocument(lastDocument);
+      }
+
+      final snapshot = await query.get();
+
+      var items = snapshot.docs
+          .map((doc) {
+            try {
+              return ItemModel.fromFirestore(doc);
+            } catch (e) {
+              debugPrint('Error parsing item: $e');
+              return null;
+            }
+          })
+          .whereType<ItemModel>()
+          .toList();
+
+      // DETERMINISTIC sort: boosted first, then by date
+      items.sort((a, b) {
+        if (a.isBoosted != b.isBoosted) {
+          return a.isBoosted ? -1 : 1;
+        }
+        // Both boosted: sort by boostedAt DESC (fallback to createdAt)
+        if (a.isBoosted && b.isBoosted) {
+          final aTime = a.boostedAt ?? a.createdAt;
+          final bTime = b.boostedAt ?? b.createdAt;
+          return bTime.compareTo(aTime);
+        }
+        // Both non-boosted: sort by createdAt DESC
+        return b.createdAt.compareTo(a.createdAt);
+      });
+
+      return {
+        'items': items,
+        'lastDocument': items.isNotEmpty ? snapshot.docs.last : null,
+      };
+    } catch (e) {
+      debugPrint('Error in getHomeFeed: $e');
+      return {'items': [], 'lastDocument': null};
+    }
+  }
 
   /// Get paginated items for home feed (ONE read operation)
   /// Uses .get() instead of .snapshots() to reduce reads

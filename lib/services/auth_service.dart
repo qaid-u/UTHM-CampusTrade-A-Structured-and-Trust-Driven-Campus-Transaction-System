@@ -49,7 +49,6 @@ class AuthService {
         'completedTransactions': 0,
         'rating': 0.0,
         'subscriptionTier': 'free',
-        'premiumActive': false,
         'activeListingCount': 0,
         'totalTransactions': 0,
         'cancelledTransactions': 0,

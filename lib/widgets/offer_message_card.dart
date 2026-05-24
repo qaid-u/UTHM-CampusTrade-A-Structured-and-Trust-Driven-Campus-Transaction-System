@@ -89,13 +89,17 @@ class _OfferMessageCardState extends State<OfferMessageCard> {
               border: Border.all(color: Colors.grey.shade300),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
               ],
             ),
-            child: Column(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -154,7 +158,7 @@ class _OfferMessageCardState extends State<OfferMessageCard> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
+                              color: statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: statusColor),
                             ),
@@ -249,6 +253,7 @@ class _OfferMessageCardState extends State<OfferMessageCard> {
                 ],
               ],
             ),
+          ),
           ),
         ),
         Padding(

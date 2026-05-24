@@ -10,10 +10,8 @@ class UserModel {
   final int completedTransactions;
   final double rating;
 
-  // Subscription fields
+  // Subscription fields (simplified)
   final String subscriptionTier;
-  final bool premiumActive;
-  final DateTime? premiumStartDate;
   final DateTime? premiumExpiryDate;
   final int activeListingCount;
 
@@ -27,8 +25,6 @@ class UserModel {
     required this.completedTransactions,
     required this.rating,
     this.subscriptionTier = 'free',
-    this.premiumActive = false,
-    this.premiumStartDate,
     this.premiumExpiryDate,
     this.activeListingCount = 0,
   });
@@ -44,8 +40,6 @@ class UserModel {
       completedTransactions: json['completedTransactions'] ?? 0,
       rating: (json['rating'] ?? 0).toDouble(),
       subscriptionTier: json['subscriptionTier'] ?? 'free',
-      premiumActive: json['premiumActive'] ?? false,
-      premiumStartDate: _readDateTime(json['premiumStartDate']),
       premiumExpiryDate: _readDateTime(json['premiumExpiryDate']),
       activeListingCount: json['activeListingCount'] ?? 0,
     );
@@ -62,8 +56,6 @@ class UserModel {
       'completedTransactions': completedTransactions,
       'rating': rating,
       'subscriptionTier': subscriptionTier,
-      'premiumActive': premiumActive,
-      'premiumStartDate': premiumStartDate,
       'premiumExpiryDate': premiumExpiryDate,
       'activeListingCount': activeListingCount,
     };
