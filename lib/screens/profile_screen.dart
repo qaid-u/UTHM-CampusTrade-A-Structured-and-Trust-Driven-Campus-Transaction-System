@@ -11,6 +11,8 @@ import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../models/item_model.dart';
 import '../widgets/feedback_helper.dart';
+import '../widgets/premium_badge.dart';
+import 'premium_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -526,6 +528,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
 
+              // Subscription Section
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Subscription',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+              if (data['subscriptionTier'] == 'premium' &&
+                  data['premiumActive'] == true) ...[                
+                ListTile(
+                  leading: Icon(
+                    Icons.verified_rounded,
+                    color: Colors.amber.shade700,
+                  ),
+                  title: const Text('Premium Active'),
+                  subtitle: Text(
+                    'Expires: ${_formatDate(data['premiumExpiryDate'])}',
+                  ),
+                  trailing: const PremiumBadge(),
+                ),
+              ] else ...[                
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () {
+                      Navigator.push(
+                        this.context,
+                        MaterialPageRoute(
+                          builder: (_) => const PremiumScreen(),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Colors.amber.shade50,
+                            child: Icon(
+                              Icons.workspace_premium,
+                              color: Colors.amber.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Go Premium',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                Text(
+                                  'Unlock unlimited listings and boosted visibility',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 16,
+                            color: Colors.grey.shade400,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+
               const Divider(),
 
               const Padding(
@@ -593,5 +675,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  String _formatDate(dynamic date) {
+    if (date == null) return '';
+    DateTime dt;
+    if (date is Timestamp) {
+      dt = date.toDate();
+    } else if (date is DateTime) {
+      dt = date;
+    } else {
+      return '';
+    }
+    return '${dt.day}/${dt.month}/${dt.year}';
   }
 }

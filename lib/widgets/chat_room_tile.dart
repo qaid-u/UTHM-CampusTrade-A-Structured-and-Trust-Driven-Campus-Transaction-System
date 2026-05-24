@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'premium_badge.dart';
+
 class ChatRoomTile extends StatefulWidget {
   final Map<String, dynamic> room;
   final String roomId;
@@ -23,6 +25,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
   String _otherUserName = 'Loading...';
   String _itemStatus = '';
   bool _isLoading = true;
+  bool _otherIsPremium = false;
 
   @override
   void initState() {
@@ -50,6 +53,9 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
       if (mounted) {
         setState(() {
           _otherUserName = userDoc.data()?['name'] ?? 'Unknown User';
+          _otherIsPremium =
+              userDoc.data()?['subscriptionTier'] == 'premium' &&
+                  userDoc.data()?['premiumActive'] == true;
           _itemStatus = itemDoc.data()?['status'] ?? 'available';
           _isLoading = false;
         });
@@ -118,6 +124,13 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
               ),
             ),
           ),
+          if (_otherIsPremium) ...[                
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: PremiumBadge(compact: true),
+            ),
+            const SizedBox(width: 4),
+          ],
           _buildStatusBadge(),
         ],
       ),

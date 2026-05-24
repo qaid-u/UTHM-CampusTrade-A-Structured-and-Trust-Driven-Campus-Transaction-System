@@ -28,6 +28,10 @@ class ItemModel {
   final DateTime createdAt;
   final bool isFeatured;
 
+  // Boosted listing fields (premium users)
+  final bool isBoosted;
+  final DateTime? boostedAt;
+
   ItemModel({
     required this.id,
     required this.sellerId,
@@ -47,6 +51,8 @@ class ItemModel {
     this.status = 'available',
     required this.createdAt,
     this.isFeatured = false,
+    this.isBoosted = false,
+    this.boostedAt,
   });
 
   factory ItemModel.fromJson(Map<String, dynamic> json) {
@@ -72,6 +78,8 @@ class ItemModel {
       status: json['status'] ?? 'available',
       createdAt: _readTimestamp(json['createdAt']),
       isFeatured: json['isFeatured'] ?? false,
+      isBoosted: json['isBoosted'] ?? false,
+      boostedAt: _readTimestampNullable(json['boostedAt']),
     );
   }
 
@@ -99,6 +107,8 @@ class ItemModel {
       'status': status,
       'createdAt': createdAt,
       'isFeatured': isFeatured,
+      'isBoosted': isBoosted,
+      'boostedAt': boostedAt ?? FieldValue.serverTimestamp(),
     };
   }
 
@@ -106,6 +116,12 @@ class ItemModel {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     return DateTime.now(); // Fallback to current time instead of epoch
+  }
+
+  static DateTime? _readTimestampNullable(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
   }
 
   static double _readDouble(Object? value) {

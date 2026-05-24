@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/app_config_service.dart';
 import 'services/fcm_service.dart';
+import 'services/subscription_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'theme/app_theme.dart';
@@ -24,6 +25,13 @@ void main() async {
     await FCMService.instance.initialize();
   } catch (e) {
     debugPrint('FCM initialization failed (non-fatal): $e');
+  }
+
+  // Initialize subscription service (checks expiry).
+  try {
+    await SubscriptionService.instance.init();
+  } catch (e) {
+    debugPrint('Subscription init failed (non-fatal): $e');
   }
 
   runApp(const CampusTradeApp());

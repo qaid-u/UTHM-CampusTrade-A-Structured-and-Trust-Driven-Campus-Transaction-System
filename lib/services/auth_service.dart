@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../constants/app_defaults.dart';
 import 'fcm_service.dart';
+import 'subscription_service.dart';
 
 class AuthService {
   AuthService._();
@@ -47,6 +48,12 @@ class AuthService {
         'trustScore': 0.0,
         'completedTransactions': 0,
         'rating': 0.0,
+        'subscriptionTier': 'free',
+        'premiumActive': false,
+        'activeListingCount': 0,
+        'totalTransactions': 0,
+        'cancelledTransactions': 0,
+        'totalReviews': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -69,6 +76,11 @@ class AuthService {
       );
 
       await _ensureUserDoc(cred.user!);
+
+      // Check subscription expiry after login.
+      try {
+        await SubscriptionService.instance.checkExpiry();
+      } catch (_) {}
 
       return null;
     } catch (e) {

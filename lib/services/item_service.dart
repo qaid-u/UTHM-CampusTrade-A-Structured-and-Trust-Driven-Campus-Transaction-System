@@ -75,6 +75,28 @@ class ItemService {
     }
   }
 
+  /// Stream a seller's available listings (for SellerProfileScreen).
+  /// Requires composite index: sellerId ASC, status ASC, createdAt DESC.
+  Stream<List<ItemModel>> watchSellerListings(String sellerId) {
+    return _itemsRef
+        .where('sellerId', isEqualTo: sellerId)
+        .where('status', isEqualTo: 'available')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) {
+            try {
+              return ItemModel.fromFirestore(doc);
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<ItemModel>()
+          .toList();
+    });
+  }
+
   /// Get real-time items only when needed (chat, inbox updates)
   Stream<List<ItemModel>> watchItems({String? sellerId, int limit = 20}) {
     try {
@@ -138,6 +160,7 @@ class ItemService {
     double meetupLatitude = 0.0,
     double meetupLongitude = 0.0,
     required List<String> images,
+    bool isBoosted = false,
   }) async {
     final thumbnail = images.isNotEmpty ? images.first : '';
 
@@ -158,6 +181,7 @@ class ItemService {
       thumbnail: thumbnail,
       images: images,
       createdAt: DateTime.now(),
+      isBoosted: isBoosted,
     );
 
     await _itemsRef.doc(itemId).set(itemData.toFirestore());

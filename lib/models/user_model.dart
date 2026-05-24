@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   final String id;
   final String name;
@@ -8,6 +10,13 @@ class UserModel {
   final int completedTransactions;
   final double rating;
 
+  // Subscription fields
+  final String subscriptionTier;
+  final bool premiumActive;
+  final DateTime? premiumStartDate;
+  final DateTime? premiumExpiryDate;
+  final int activeListingCount;
+
   const UserModel({
     required this.id,
     required this.name,
@@ -17,6 +26,11 @@ class UserModel {
     required this.trustScore,
     required this.completedTransactions,
     required this.rating,
+    this.subscriptionTier = 'free',
+    this.premiumActive = false,
+    this.premiumStartDate,
+    this.premiumExpiryDate,
+    this.activeListingCount = 0,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -29,6 +43,11 @@ class UserModel {
       trustScore: (json['trustScore'] ?? 0).toDouble(),
       completedTransactions: json['completedTransactions'] ?? 0,
       rating: (json['rating'] ?? 0).toDouble(),
+      subscriptionTier: json['subscriptionTier'] ?? 'free',
+      premiumActive: json['premiumActive'] ?? false,
+      premiumStartDate: _readDateTime(json['premiumStartDate']),
+      premiumExpiryDate: _readDateTime(json['premiumExpiryDate']),
+      activeListingCount: json['activeListingCount'] ?? 0,
     );
   }
 
@@ -42,6 +61,17 @@ class UserModel {
       'trustScore': trustScore,
       'completedTransactions': completedTransactions,
       'rating': rating,
+      'subscriptionTier': subscriptionTier,
+      'premiumActive': premiumActive,
+      'premiumStartDate': premiumStartDate,
+      'premiumExpiryDate': premiumExpiryDate,
+      'activeListingCount': activeListingCount,
     };
+  }
+
+  static DateTime? _readDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
   }
 }

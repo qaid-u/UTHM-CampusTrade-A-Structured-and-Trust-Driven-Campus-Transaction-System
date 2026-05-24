@@ -7,8 +7,9 @@ import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_service.dart';
-import '../models/user_model.dart';
+import '../widgets/premium_badge.dart';
 import 'chat_screen.dart';
+import 'seller_profile_screen.dart';
 
 class ItemDetailScreen extends StatefulWidget {
   const ItemDetailScreen({super.key, required this.itemId});
@@ -31,7 +32,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         .snapshots();
   }
 
-  Future<UserModel?> _getSeller(String sellerId) async {
+  Future<Map<String, dynamic>?> _getSellerInfo(String sellerId) async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
@@ -40,7 +41,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
       if (!doc.exists || doc.data() == null) return null;
 
-      return UserModel.fromJson(doc.data()!);
+      return doc.data();
     } catch (_) {
       return null;
     }
@@ -266,28 +267,110 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 const SizedBox(height: 20),
 
                 // ---------------- SELLER ----------------
-                FutureBuilder<UserModel?>(
-                  future: _getSeller(sellerId),
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: _getSellerInfo(sellerId),
                   builder: (context, snap) {
-                    final seller = snap.data;
-
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Seller",
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                    final sellerData = snap.data;
+                    final sellerName = sellerData?['name'] ?? 'Unknown';
+                    final studentId = sellerData?['studentId'] ?? '';
+                    final isPremium = sellerData?['subscriptionTier'] == 'premium' &&
+                        sellerData?['premiumActive'] == true;
+                                
+                    final profileImage = sellerData?['profileImage'] ?? '';
+                    
+                    return Card(
+                      margin: EdgeInsets.zero,
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SellerProfileScreen(
+                                sellerId: sellerId,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Seller',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'View Profile',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.blue.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    size: 12,
+                                    color: Colors.blue.shade600,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundImage: profileImage.isNotEmpty
+                                        ? NetworkImage(profileImage)
+                                        : null,
+                                    child: profileImage.isEmpty
+                                        ? const Icon(Icons.person_rounded, size: 22)
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                sellerName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 15,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (isPremium) ...[                                              
+                                              const SizedBox(width: 6),
+                                              const PremiumBadge(compact: true),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          studentId,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(seller?.name ?? "Unknown"),
-                          Text(seller?.studentId ?? ""),
-                        ],
+                        ),
                       ),
                     );
                   },

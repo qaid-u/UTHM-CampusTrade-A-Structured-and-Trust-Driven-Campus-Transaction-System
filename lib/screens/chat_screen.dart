@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/storage_service.dart';
 import '../services/review_service.dart';
 import 'meetup_location_screen.dart';
+import 'seller_profile_screen.dart';
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
 
@@ -873,11 +874,28 @@ class _ChatScreenState extends State<ChatScreen> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _otherUserName ?? "Chat",
-                    style: const TextStyle(fontSize: 18),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: GestureDetector(
+                    onTap: () {
+                      final otherId = (user!.uid == _sellerId)
+                          ? _buyerId
+                          : _sellerId;
+                      if (otherId != null && otherId.isNotEmpty) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SellerProfileScreen(
+                              sellerId: otherId,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(
+                      _otherUserName ?? "Chat",
+                      style: const TextStyle(fontSize: 18),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 if (_itemStatus != null && _itemStatus != 'available')

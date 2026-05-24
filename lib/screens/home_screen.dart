@@ -277,7 +277,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final filtered = _filter(_items);
 
-    if (filtered.isEmpty && !_loading) {
+    // Sort: boosted items first, then by newest.
+    final sorted = List<ItemModel>.from(filtered)
+      ..sort((a, b) {
+        if (a.isBoosted != b.isBoosted) {
+          return a.isBoosted ? -1 : 1;
+        }
+        return b.createdAt.compareTo(a.createdAt);
+      });
+
+    if (sorted.isEmpty && !_loading) {
       return _emptyState();
     }
 
@@ -298,9 +307,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
-        itemCount: filtered.length + (_hasMore && _isReloading ? 1 : 0),
+        itemCount: sorted.length + (_hasMore && _isReloading ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index >= filtered.length) {
+          if (index >= sorted.length) {
             // Loading indicator at bottom
             return Padding(
               padding: const EdgeInsets.all(20),
@@ -312,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          final item = filtered[index];
+          final item = sorted[index];
 
           return ItemCard(
             item: item,

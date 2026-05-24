@@ -7,9 +7,11 @@ import 'package:flutter/foundation.dart';
 import '../services/storage_service.dart';
 import '../services/item_service.dart';
 import '../services/app_config_service.dart';
+import '../services/subscription_service.dart';
 import '../constants/app_defaults.dart';
 import '../widgets/feedback_helper.dart';
 import 'meetup_location_screen.dart';
+import 'premium_screen.dart';
 
 class AddItemScreen extends StatefulWidget {
   const AddItemScreen({super.key});
@@ -103,6 +105,50 @@ class _AddItemScreenState extends State<AddItemScreen> {
     }
   }
 
+  /// Shows a dialog when the free user listing limit is reached.
+  Future<void> _showListingLimitDialog() {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Listing Limit Reached',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Free accounts may only have 5 active listings at a time. '
+          'Upgrade to Premium to unlock unlimited listings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                this.context,
+                MaterialPageRoute(
+                  builder: (_) => const PremiumScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.workspace_premium, size: 18),
+            label: const Text('Upgrade Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> uploadItem() async {
     // Validate inputs
     if (_title.text.trim().isEmpty) {
@@ -140,6 +186,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
     if (_selectedCondition == null) {
       FeedbackHelper.showWarning(context, "Please select a condition");
+      return;
+    }
+
+    // Check listing limit for free users.
+    final canCreate = await SubscriptionService.instance.canCreateListing();
+    if (!canCreate) {
+      _showListingLimitDialog();
       return;
     }
 
@@ -212,6 +265,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         meetupLatitude: _meetupLatitude ?? 1.8538, // Default: UTHM center
         meetupLongitude: _meetupLongitude ?? 103.0863,
         images: imageUrls,
+        isBoosted: SubscriptionService.instance.isPremium,
       );
 
       debugPrint('Item saved to Firestore with seller snapshot');

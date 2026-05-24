@@ -2,8 +2,31 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Open read access for all authenticated users.
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if request.auth != null;
+
+      // Allow creates for authenticated users.
+      allow create: if request.auth != null;
+
+      // Block client-side writes to server-managed fields and
+      // prevent modifications to reviews (immutable after creation).
+      // These fields must only be modified by server-side flows
+      // (Cloud Functions, Firebase Admin SDK, or trusted backend).
+      allow update: if request.auth != null
+        // Reviews are immutable — block ALL updates
+        && !(resource.__name__.matches('.*/reviews/.*'))
+        // Block modifications to protected fields
+        && !(request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['subscriptionTier', 'premiumActive', 'premiumStartDate',
+                   'premiumExpiryDate', 'isBoosted', 'boostedAt',
+                   'rating', 'trustScore', 'completedTransactions',
+                   'totalTransactions', 'cancelledTransactions',
+                   'totalReviews']));
+
+      // Reviews are immutable — block ALL deletes on review documents.
+      allow delete: if request.auth != null
+        && !(resource.__name__.matches('.*/reviews/.*'));
     }
   }
 }

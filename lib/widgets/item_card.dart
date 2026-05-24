@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/item_model.dart';
 import '../theme/app_theme.dart';
+import 'premium_badge.dart';
 
 class ItemCard extends StatelessWidget {
   const ItemCard({super.key, required this.item, required this.onTap});
@@ -125,7 +126,12 @@ class ItemCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 5),
+              if (item.isBoosted)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: PremiumBadge(compact: true),
+                ),
+              const SizedBox(height: 5),
                     Row(
                       children: [
                         const Icon(
