@@ -46,7 +46,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final user = AuthService.instance.currentUser;
       if (user != null) {
         // Only initialize notifications if user is authenticated
-        _notificationsStream = NotificationService.instance.getUserNotifications(user.uid);
+        _notificationsStream = NotificationService.instance
+            .getUserNotifications(user.uid);
         // Load items for authenticated user
         _loadItems();
       } else {
@@ -112,7 +113,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       debugPrint('👤 User: ${user.uid}');
 
-
       // Add timeout to prevent hanging
       final result = await ItemService.instance
           .getHomeFeed(
@@ -132,18 +132,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final items = result['items'] as List<ItemModel>;
       final lastDoc = result['lastDocument'] as DocumentSnapshot?;
+      final hasMore = result['hasMore'] as bool? ?? items.length >= batchSize;
 
       if (!mounted) return;
 
       debugPrint('Loaded ${items.length} items successfully');
-
-      if (items.length < batchSize) {
-        _hasMore = false;
-      }
-
-      if (lastDoc != null) {
-        _lastDocument = lastDoc;
-      }
 
       setState(() {
         if (refresh) {
@@ -151,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
         } else {
           _items.addAll(items); // Append on pagination
         }
+        _lastDocument = lastDoc;
+        _hasMore = hasMore;
         _loading = false;
         _isReloading = false;
       });
@@ -174,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Show user-friendly error message
       if (_items.isEmpty) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
         // Only show snackbar if we have no items to display
         if (e.toString().contains('timed out')) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -374,6 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Show loading feedback
     if (mounted) {
+      ScaffoldMessenger.of(context).removeCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -414,6 +411,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+    if (_meetupLocation == selected) return;
+
     setState(() {
       _meetupLocation = selected;
       _items.clear();
@@ -541,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _lastDocument = null;
                     _hasMore = true;
                   });
+                  ScaffoldMessenger.of(context).removeCurrentSnackBar();
                   _loadItems(refresh: true);
                 },
                 icon: const Icon(Icons.clear_all, size: 20),

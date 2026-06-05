@@ -20,34 +20,60 @@ class ItemService {
     DocumentSnapshot? lastDocument,
   }) async {
     try {
-      Query<Map<String, dynamic>> query = _itemsRef;
-      query = query.where('status', isEqualTo: 'available');
-      query = query.orderBy('createdAt', descending: true);
-      query = query.limit(limit);
+      final categoryFilter = _cleanFilter(category);
+      final locationFilter = _cleanFilter(meetupLocation);
+      final hasFilters = categoryFilter != null || locationFilter != null;
+      final pageSize = hasFilters ? (limit * 4).clamp(limit, 60) : limit;
 
-      if (category != null && category.isNotEmpty) {
-        query = query.where('category', isEqualTo: category);
-      }
-      if (meetupLocation != null && meetupLocation.isNotEmpty) {
-        query = query.where('meetupLocation', isEqualTo: meetupLocation);
-      }
-      if (lastDocument != null) {
-        query = query.startAfterDocument(lastDocument);
+      final items = <ItemModel>[];
+      DocumentSnapshot? cursor = lastDocument;
+      var hasMore = true;
+
+      // Firestore string equality is too strict for app data such as
+      // "Library" vs "UTHM Library Lobby", so fetch pages and filter locally.
+      for (var page = 0; page < 5 && items.length < limit && hasMore; page++) {
+        Query<Map<String, dynamic>> query = _itemsRef
+            .where('status', isEqualTo: 'available')
+            .orderBy('createdAt', descending: true)
+            .limit(pageSize);
+
+        if (cursor != null) {
+          query = query.startAfterDocument(cursor);
+        }
+
+        final snapshot = await query.get();
+
+        if (snapshot.docs.isEmpty) {
+          hasMore = false;
+          break;
+        }
+
+        cursor = snapshot.docs.last;
+        hasMore = snapshot.docs.length == pageSize;
+
+        final pageItems = snapshot.docs
+            .map((doc) {
+              try {
+                return ItemModel.fromFirestore(doc);
+              } catch (e) {
+                debugPrint('Error parsing item: $e');
+                return null;
+              }
+            })
+            .whereType<ItemModel>()
+            .where(
+              (item) =>
+                  _matchesCategory(item.category, categoryFilter) &&
+                  _matchesLocation(item.meetupLocation, locationFilter),
+            )
+            .toList();
+
+        items.addAll(pageItems);
       }
 
-      final snapshot = await query.get();
-
-      var items = snapshot.docs
-          .map((doc) {
-            try {
-              return ItemModel.fromFirestore(doc);
-            } catch (e) {
-              debugPrint('Error parsing item: $e');
-              return null;
-            }
-          })
-          .whereType<ItemModel>()
-          .toList();
+      if (items.length > limit) {
+        items.removeRange(limit, items.length);
+      }
 
       // DETERMINISTIC sort: boosted first, then by date
       items.sort((a, b) {
@@ -64,14 +90,56 @@ class ItemService {
         return b.createdAt.compareTo(a.createdAt);
       });
 
-      return {
-        'items': items,
-        'lastDocument': items.isNotEmpty ? snapshot.docs.last : null,
-      };
+      return {'items': items, 'lastDocument': cursor, 'hasMore': hasMore};
     } catch (e) {
       debugPrint('Error in getHomeFeed: $e');
-      return {'items': [], 'lastDocument': null};
+      rethrow;
     }
+  }
+
+  String? _cleanFilter(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  bool _matchesCategory(String itemCategory, String? selectedCategory) {
+    if (selectedCategory == null) return true;
+
+    final item = _normalizeForFilter(itemCategory);
+    final selected = _normalizeForFilter(selectedCategory);
+
+    return item == selected ||
+        item == _singular(selected) ||
+        _singular(item) == selected ||
+        _singular(item) == _singular(selected);
+  }
+
+  bool _matchesLocation(String itemLocation, String? selectedLocation) {
+    if (selectedLocation == null) return true;
+
+    final item = _normalizeForFilter(itemLocation);
+    final selected = _normalizeForFilter(selectedLocation);
+
+    if (item.isEmpty) return false;
+    if (item.contains(selected) || selected.contains(item)) return true;
+
+    if (selected == 'cafe' && item.contains('cafeteria')) return true;
+    if (selected == 'studentcentre' && item.contains('hepa')) return true;
+    if (selected == 'facultyarea' && item.contains('faculty')) return true;
+    if (selected == 'residentialcollege' &&
+        (item.contains('residential') || item.contains('college'))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  String _normalizeForFilter(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  String _singular(String value) {
+    return value.endsWith('s') ? value.substring(0, value.length - 1) : value;
   }
 
   /// Get paginated items for home feed (ONE read operation)
@@ -149,17 +217,17 @@ class ItemService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) {
-            try {
-              return ItemModel.fromFirestore(doc);
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<ItemModel>()
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) {
+                try {
+                  return ItemModel.fromFirestore(doc);
+                } catch (_) {
+                  return null;
+                }
+              })
+              .whereType<ItemModel>()
+              .toList();
+        });
   }
 
   /// Get real-time items only when needed (chat, inbox updates)
