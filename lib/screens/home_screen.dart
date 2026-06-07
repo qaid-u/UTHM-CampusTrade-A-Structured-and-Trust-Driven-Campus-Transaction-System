@@ -234,7 +234,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Campus Trade"),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("UTHM CampusTrade",
+                style: TextStyle(
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                )),
+          ],
+        ),
         actions: [_notificationButton(user.uid)],
       ),
 
@@ -428,11 +438,31 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade100),
       ),
-      child: const Text(
-        "Buy & sell safely in your campus",
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.verified_user_rounded,
+              color: Colors.blue.shade700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              "Buy and Sell Safely In Your Campus",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
     );
   }
