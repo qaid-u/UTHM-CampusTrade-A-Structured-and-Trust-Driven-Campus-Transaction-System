@@ -71,11 +71,8 @@ class ItemService {
         items.addAll(pageItems);
       }
 
-      if (items.length > limit) {
-        items.removeRange(limit, items.length);
-      }
-
-      // DETERMINISTIC sort: boosted first, then by date
+      // DETERMINISTIC sort: boosted first, boostedAt DESC, then createdAt DESC.
+      // This is intentionally handled in the service, not the UI.
       items.sort((a, b) {
         if (a.isBoosted != b.isBoosted) {
           return a.isBoosted ? -1 : 1;
@@ -89,6 +86,10 @@ class ItemService {
         // Both non-boosted: sort by createdAt DESC
         return b.createdAt.compareTo(a.createdAt);
       });
+
+      if (items.length > limit) {
+        items.removeRange(limit, items.length);
+      }
 
       return {'items': items, 'lastDocument': cursor, 'hasMore': hasMore};
     } catch (e) {
@@ -284,6 +285,7 @@ class ItemService {
     required String sellerName,
     required String sellerImage,
     required String sellerStudentId,
+    required bool sellerIsPremium,
     required String title,
     required String description,
     required double price,
@@ -303,6 +305,7 @@ class ItemService {
       sellerName: sellerName,
       sellerImage: sellerImage,
       sellerStudentId: sellerStudentId,
+      sellerIsPremium: sellerIsPremium,
       title: title,
       description: description,
       price: price,
@@ -315,6 +318,7 @@ class ItemService {
       images: images,
       createdAt: DateTime.now(),
       isBoosted: isBoosted,
+      boostedAt: isBoosted ? DateTime.now() : null,
     );
 
     await _itemsRef.doc(itemId).set(itemData.toFirestore());

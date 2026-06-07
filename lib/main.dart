@@ -1,40 +1,44 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+import 'package:flutter/material.dart';
 
-import 'services/auth_service.dart';
-import 'services/app_config_service.dart';
-import 'services/fcm_service.dart';
-import 'services/subscription_service.dart';
+import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'services/app_config_service.dart';
+import 'services/auth_service.dart';
+import 'services/fcm_service.dart';
+import 'services/subscription_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize remote app config
-  await AppConfigService.instance.load();
+  runApp(const CampusTradeApp());
 
-  // Initialize FCM push notifications
-  // Wrapped in try-catch — FCM may fail if SHA-1 fingerprint
-  // is not registered in Firebase Console or FCM API is not enabled.
-  // The app will still work; push notifications simply won't be available.
+  _initializeOptionalServices();
+}
+
+Future<void> _initializeOptionalServices() async {
+  // Optional startup services run after first paint so network delays cannot
+  // leave the app on a blank native screen.
+  try {
+    await AppConfigService.instance.load();
+  } catch (e) {
+    debugPrint('App config initialization failed (non-fatal): $e');
+  }
+
   try {
     await FCMService.instance.initialize();
   } catch (e) {
     debugPrint('FCM initialization failed (non-fatal): $e');
   }
 
-  // Initialize subscription service (checks expiry).
   try {
     await SubscriptionService.instance.init();
   } catch (e) {
     debugPrint('Subscription init failed (non-fatal): $e');
   }
-
-  runApp(const CampusTradeApp());
 }
 
 class CampusTradeApp extends StatelessWidget {

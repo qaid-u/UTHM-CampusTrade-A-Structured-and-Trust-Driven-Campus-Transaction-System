@@ -2,31 +2,59 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Open read access for all authenticated users.
-    match /{document=**} {
-      allow read: if request.auth != null;
+    function signedIn() {
+      return request.auth != null;
+    }
 
-      // Allow creates for authenticated users.
-      allow create: if request.auth != null;
+    // User profiles are readable by signed-in users for marketplace identity.
+    // App-side flows also update profile, subscription, token, and trust fields.
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn();
+    }
 
-      // Block client-side writes to server-managed fields and
-      // prevent modifications to reviews (immutable after creation).
-      // These fields must only be modified by server-side flows
-      // (Cloud Functions, Firebase Admin SDK, or trusted backend).
-      allow update: if request.auth != null
-        // Reviews are immutable — block ALL updates
-        && !(resource.__name__.matches('.*/reviews/.*'))
-        // Block modifications to protected fields
-        && !(request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['subscriptionTier', 'premiumActive', 'premiumStartDate',
-                   'premiumExpiryDate', 'isBoosted', 'boostedAt',
-                   'rating', 'trustScore', 'completedTransactions',
-                   'totalTransactions', 'cancelledTransactions',
-                   'totalReviews']));
+    // Marketplace listings are created and managed by authenticated users.
+    // App-side flows update fields such as status, isBoosted, and boostedAt.
+    match /items/{itemId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn();
+    }
 
-      // Reviews are immutable — block ALL deletes on review documents.
-      allow delete: if request.auth != null
-        && !(resource.__name__.matches('.*/reviews/.*'));
+    // Offers and transactions are fully controlled by the app UI/services.
+    match /offers/{offerId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /transactions/{transactionId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    // Chat rooms and messages are created/updated from the application.
+    match /chatRooms/{roomId} {
+      allow read, create, update, delete: if signedIn();
+
+      match /messages/{messageId} {
+        allow read, create, update, delete: if signedIn();
+      }
+    }
+
+    // Reviews stay anonymous and write-once:
+    // document ID format is {transactionId}_{reviewerId}.
+    match /reviews/{reviewId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.reviewerId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Notifications and app config are used by client-side app flows.
+    match /notifications/{notificationId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /config/{configId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn();
     }
   }
 }

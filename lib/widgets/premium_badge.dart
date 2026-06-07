@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Displays a "Premium Seller" badge with a verified/crown icon
-/// and a subtle gentle highlight animation.
-///
-/// Use [compact] for small spaces (ItemCard, ChatRoomTile).
-/// Default (non-compact) for profile screens and detail views.
+/// Reusable visual distinction for Premium sellers across cards, profiles,
+/// chat, and item detail surfaces.
 class PremiumBadge extends StatefulWidget {
   const PremiumBadge({super.key, this.compact = false});
 
@@ -16,8 +13,8 @@ class PremiumBadge extends StatefulWidget {
 
 class _PremiumBadgeState extends State<PremiumBadge>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _pulseAnim;
+  late final AnimationController _controller;
+  late final Animation<double> _pulseAnim;
 
   @override
   void initState() {
@@ -26,9 +23,11 @@ class _PremiumBadgeState extends State<PremiumBadge>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-    _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    // Interactive media element: subtle premium badge pulse animation.
+    _pulseAnim = Tween<double>(
+      begin: 0.96,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _controller.repeat(reverse: true);
   }
 
@@ -40,58 +39,23 @@ class _PremiumBadgeState extends State<PremiumBadge>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.compact) {
-      return AnimatedBuilder(
-        animation: _pulseAnim,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _pulseAnim.value,
-            child: child,
-          );
-        },
-        child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.amber.shade50,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.amber.shade300, width: 0.5),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.verified_rounded,
-              size: 10,
-              color: Colors.amber.shade700,
-            ),
-            const SizedBox(width: 2),
-            Text(
-              'Premium',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: Colors.amber.shade800,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    }
+    final label = widget.compact ? 'Premium' : 'Premium Seller';
+    final iconSize = widget.compact ? 11.0 : 16.0;
+    final fontSize = widget.compact ? 9.5 : 12.0;
+    final padding = widget.compact
+        ? const EdgeInsets.symmetric(horizontal: 7, vertical: 3)
+        : const EdgeInsets.symmetric(horizontal: 11, vertical: 5);
 
     return AnimatedBuilder(
       animation: _pulseAnim,
       builder: (context, child) {
-        return Transform.scale(
-          scale: _pulseAnim.value,
-          child: child,
-        );
+        return Transform.scale(scale: _pulseAnim.value, child: child);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: padding,
         decoration: BoxDecoration(
           color: Colors.amber.shade50,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(color: Colors.amber.shade300, width: 1),
         ),
         child: Row(
@@ -99,16 +63,16 @@ class _PremiumBadgeState extends State<PremiumBadge>
           children: [
             Icon(
               Icons.verified_rounded,
-              size: 16,
-              color: Colors.amber.shade700,
+              size: iconSize,
+              color: Colors.amber.shade800,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Text(
-              'Premium Seller',
+              label,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.amber.shade800,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w800,
+                color: Colors.amber.shade900,
               ),
             ),
           ],

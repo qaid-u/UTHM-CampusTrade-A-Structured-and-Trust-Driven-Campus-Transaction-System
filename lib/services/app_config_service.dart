@@ -73,11 +73,16 @@ class AppConfigService {
         return await FirebaseFirestore.instance
             .collection('config')
             .doc('app')
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 3));
       } on FirebaseException catch (e) {
         final canRetry = retryableCodes.contains(e.code) && attempt < 3;
         if (!canRetry) rethrow;
 
+        await Future.delayed(delay);
+        delay *= 2;
+      } catch (_) {
+        if (attempt >= 3) rethrow;
         await Future.delayed(delay);
         delay *= 2;
       }

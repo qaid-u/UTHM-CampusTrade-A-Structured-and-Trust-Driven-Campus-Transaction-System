@@ -11,18 +11,16 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
     // Check if file is an image
     function isImage() {
-      return request.resource.contentType.matches('image/.*');
+      return request.resource != null
+        && request.resource.contentType.matches('image/.*');
     }
 
     // Validate file size (in bytes)
     function isValidSize(maxSizeMB) {
-      return request.resource.size < maxSizeMB * 1024 * 1024;
+      return request.resource != null
+        && request.resource.size < maxSizeMB * 1024 * 1024;
     }
 
     // ============================================
@@ -32,17 +30,19 @@ service firebase.storage {
     // 1. USER PROFILES & AVATARS
     // Path: /users/{userId}/avatar.jpg or /users/{userId}/profile/*
     // - Anyone can read profile pictures (for displaying seller info)
-    // - Only owner can upload/update their own avatar
+    // - Authenticated app users can upload/update profile photos
     // - Max 5MB for profile pictures
     match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     // Legacy path: /profile_pictures/{userId}/*
     match /profile_pictures/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     // 2. ITEM IMAGES & PRODUCT LISTINGS
@@ -53,13 +53,15 @@ service firebase.storage {
     // - Must be image files only
     match /items/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow delete: if isAuthenticated();
     }
 
     // Legacy path: /item_images/{itemId}/*
     match /item_images/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow delete: if isAuthenticated();
     }
 
     // 3. THUMBNAILS
@@ -69,7 +71,8 @@ service firebase.storage {
     // - Max 2MB for thumbnails
     match /thumbnails/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(2);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(2);
+      allow delete: if isAuthenticated();
     }
 
     // 4. TRANSACTION/MEETUP PHOTOS (Optional Future Feature)
@@ -79,7 +82,8 @@ service firebase.storage {
     // - Max 5MB per photo
     match /transactions/{transactionId}/{allPaths=**} {
       allow read: if isAuthenticated(); // Can be restricted further with Firestore check
-      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     // 5. CHAT IMAGES (for transaction receipts)
@@ -88,12 +92,14 @@ service firebase.storage {
     // - Max 5MB per chat image (compressed JPEG receipts)
     match /chat/{roomId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     match /chats/{roomId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow delete: if isAuthenticated();
     }
 
     // 6. DEFAULT DENY RULE

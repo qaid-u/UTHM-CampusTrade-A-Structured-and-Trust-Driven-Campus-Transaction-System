@@ -54,8 +54,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
       if (mounted) {
         setState(() {
           _otherUserName = userDoc.data()?['name'] ?? 'Unknown User';
-          _otherIsPremium =
-              SubscriptionService.isPremiumActive(userDoc.data());
+          _otherIsPremium = SubscriptionService.isPremiumActive(userDoc.data());
           _itemStatus = itemDoc.data()?['status'] ?? 'available';
           _isLoading = false;
         });
@@ -76,6 +75,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
     final itemThumbnail = widget.room['itemThumbnail'] ?? '';
     final lastMessage = widget.room['lastMessage'] ?? 'No messages yet';
     final lastMessageType = widget.room['lastMessageType'] ?? 'text';
+    final lastSenderId = widget.room['lastSenderId'];
     final updatedAt = widget.room['updatedAt'];
 
     final unreadCounts = widget.room['unreadCounts'] as Map<String, dynamic>?;
@@ -88,6 +88,9 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
       displayMessage = 'New Offer: $lastMessage';
     } else if (lastMessageType == 'system') {
       displayMessage = '[System] $lastMessage';
+    }
+    if (lastSenderId == widget.currentUserId && lastMessageType != 'system') {
+      displayMessage = 'You: $displayMessage';
     }
 
     final isSeller = widget.currentUserId == widget.room['sellerId'];
@@ -124,7 +127,7 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
               ),
             ),
           ),
-          if (_otherIsPremium) ...[                
+          if (_otherIsPremium) ...[
             const Padding(
               padding: EdgeInsets.only(left: 4),
               child: PremiumBadge(compact: true),
@@ -227,7 +230,8 @@ class _ChatRoomTileState extends State<ChatRoomTile> {
       textColor = Colors.blue.shade800;
     } else if (_itemStatus == 'sold') {
       final transactionId = widget.room['transactionId'];
-      final hasBought = transactionId != null && transactionId.toString().isNotEmpty;
+      final hasBought =
+          transactionId != null && transactionId.toString().isNotEmpty;
 
       if (hasBought) {
         if (widget.currentUserId == widget.room['buyerId']) {

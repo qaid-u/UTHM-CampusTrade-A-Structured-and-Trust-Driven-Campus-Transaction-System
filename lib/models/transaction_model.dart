@@ -13,6 +13,7 @@ class TransactionModel {
   final String id;
   final String itemId;
   final String itemTitle;
+  final String itemThumbnail;
   final String buyerId;
   final String sellerId;
   final double offerPrice;
@@ -40,6 +41,7 @@ class TransactionModel {
     required this.id,
     required this.itemId,
     this.itemTitle = '',
+    this.itemThumbnail = '',
     required this.buyerId,
     required this.sellerId,
     required this.offerPrice,
@@ -75,6 +77,9 @@ class TransactionModel {
       id: json['id'] ?? json['transactionId'] ?? '',
       itemId: json['itemId'] ?? '',
       itemTitle: json['itemTitle'] ?? '',
+      itemThumbnail:
+          (json['itemThumbnail'] ?? json['thumbnail'] ?? json['imageUrl'] ?? '')
+              .toString(),
       buyerId: json['buyerId'] ?? '',
       sellerId: json['sellerId'] ?? '',
       offerPrice: offerPrice,
@@ -93,11 +98,15 @@ class TransactionModel {
       sellerMeetupConfirmed: json['sellerMeetupConfirmed'] ?? false,
       receiptUploaded: json['receiptUploaded'] ?? false,
       paymentVerified: json['paymentVerified'] ?? false,
-      verifiedAt: json['verifiedAt'] != null ? _readTimestamp(json['verifiedAt']) : null,
+      verifiedAt: json['verifiedAt'] != null
+          ? _readTimestamp(json['verifiedAt'])
+          : null,
       receiptUrl: json['receiptUrl'],
       cancelledBy: json['cancelledBy'],
       cancelledReason: json['cancelledReason'],
-      completedAt: json['completedAt'] != null ? _readTimestamp(json['completedAt']) : null,
+      completedAt: json['completedAt'] != null
+          ? _readTimestamp(json['completedAt'])
+          : null,
     );
   }
 
@@ -111,6 +120,7 @@ class TransactionModel {
       'transactionId': id,
       'itemId': itemId,
       'itemTitle': itemTitle,
+      if (itemThumbnail.isNotEmpty) 'itemThumbnail': itemThumbnail,
       'buyerId': buyerId,
       'sellerId': sellerId,
       'participants': [buyerId, sellerId],

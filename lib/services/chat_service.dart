@@ -33,7 +33,9 @@ class ChatService {
 
     DocumentSnapshot<Map<String, dynamic>> doc;
     try {
-      debugPrint('🔍 Fetching chat room: $roomId (buyerId: $buyerId, sellerId: $sellerId)');
+      debugPrint(
+        '🔍 Fetching chat room: $roomId (buyerId: $buyerId, sellerId: $sellerId)',
+      );
       doc = await ref.get().timeout(
         const Duration(seconds: 3),
         onTimeout: () => throw Exception('Timeout fetching chat room info'),
@@ -42,7 +44,7 @@ class ChatService {
       debugPrint('❌ Error reading chat room document $roomId: $e');
       rethrow;
     }
-    
+
     if (!doc.exists) {
       debugPrint('🆕 Creating new chat room: $roomId');
       final room = ChatRoomModel(
@@ -97,7 +99,7 @@ class ChatService {
     debugPrint('  - roomId: $roomId');
     debugPrint('  - senderId: $senderId');
     debugPrint('  - type: $type');
-    
+
     final msgRef = _db
         .collection('chatRooms')
         .doc(roomId)
@@ -123,6 +125,10 @@ class ChatService {
     batch.set(msgRef, msg.toFirestore());
 
     final roomRef = _db.collection('chatRooms').doc(roomId);
+    final roomDoc = await roomRef.get();
+    final participants = List<String>.from(
+      roomDoc.data()?['participantIds'] ?? const <String>[],
+    );
 
     final updateData = {
       'lastMessage': text,
@@ -130,6 +136,12 @@ class ChatService {
       'lastSenderId': senderId,
       'updatedAt': FieldValue.serverTimestamp(),
     };
+
+    for (final participantId in participants) {
+      if (participantId != senderId) {
+        updateData['unreadCounts.$participantId'] = FieldValue.increment(1);
+      }
+    }
 
     if (offerId != null) {
       updateData['latestOfferId'] = offerId;

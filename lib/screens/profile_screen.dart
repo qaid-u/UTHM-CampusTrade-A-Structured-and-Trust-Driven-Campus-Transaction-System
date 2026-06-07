@@ -10,9 +10,12 @@ import '../screens/item_detail_screen.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../models/item_model.dart';
+import '../models/review_model.dart';
 import '../widgets/feedback_helper.dart';
 import '../widgets/premium_badge.dart';
+import '../widgets/review_card.dart';
 import '../services/subscription_service.dart';
+import '../services/review_service.dart';
 import 'premium_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -35,7 +38,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Realtime user document subscription for trust score updates
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-      _userDocSubscription;
+  _userDocSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _myItemsSubscription;
 
   @override
   void initState() {
@@ -44,7 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _refreshProfile();
     });
     _setupUserDocListener();
-    _loadMyItems();
+    _setupMyItemsListener();
   }
 
   /// Real-time listener for user document — auto-updates trust score, rating, etc.
@@ -52,23 +56,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    _userDocSubscription = usersRef.doc(user.uid).snapshots().listen(
-      (doc) {
-        if (!mounted) return;
-        if (doc.exists) {
-          setState(() {
-            _userData = doc.data();
-            _loadingProfile = false;
-          });
-        }
-      },
-      onError: (e) {
-        debugPrint('User doc stream error: $e');
-        if (mounted) {
-          setState(() => _loadingProfile = false);
-        }
-      },
-    );
+    _userDocSubscription = usersRef
+        .doc(user.uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+            if (doc.exists) {
+              setState(() {
+                _userData = doc.data();
+                _loadingProfile = false;
+              });
+            }
+          },
+          onError: (e) {
+            debugPrint('User doc stream error: $e');
+            if (mounted) {
+              setState(() => _loadingProfile = false);
+            }
+          },
+        );
+  }
+
+  void _setupMyItemsListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _myItemsSubscription?.cancel();
+    _myItemsSubscription = FirebaseFirestore.instance
+        .collection('items')
+        .where('sellerId', isEqualTo: user.uid)
+        .limit(50)
+        .snapshots()
+        .listen(
+          (items) {
+            final filtered =
+                items.docs.map((doc) => ItemModel.fromFirestore(doc)).toList()
+                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            if (!mounted) return;
+            setState(() {
+              _myItems = filtered;
+              _loadingItems = false;
+            });
+          },
+          onError: (e) {
+            debugPrint('My listings stream error: $e');
+            if (mounted) setState(() => _loadingItems = false);
+          },
+        );
   }
 
   Future<void> _loadMyItems() async {
@@ -76,18 +111,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null) return;
 
     try {
-      // OPTIMIZED: Use sellerId query instead of fetching all items
       final items = await FirebaseFirestore.instance
           .collection('items')
           .where('sellerId', isEqualTo: user.uid)
-          .orderBy('createdAt', descending: true)
           .limit(50)
           .get()
           .timeout(const Duration(seconds: 5));
 
-      final filtered = items.docs
-          .map((doc) => ItemModel.fromFirestore(doc))
-          .toList();
+      final filtered =
+          items.docs.map((doc) => ItemModel.fromFirestore(doc)).toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       if (mounted) {
         setState(() {
@@ -112,6 +145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _userDocSubscription?.cancel();
+    _myItemsSubscription?.cancel();
     super.dispose();
   }
 
@@ -350,6 +384,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? AppDefaults.defaultProfileImage
         : rawImage;
     final bio = data['bio'] ?? '';
+    final isPremium = SubscriptionService.isPremiumActive(data);
+    final activeListingCount = _myItems
+        .where((item) => item.status == 'available')
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -500,11 +538,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.check_circle_rounded, color: Colors.green),
-                  title: Text("Completed Transactions: ${data['completedTransactions'] ?? 0}"),
+                  leading: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green,
+                  ),
+                  title: Text(
+                    "Completed Transactions: ${data['completedTransactions'] ?? 0}",
+                  ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -520,7 +566,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           minHeight: 10,
                           backgroundColor: Colors.grey.shade200,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            _getTrustScoreColor((data['trustScore'] ?? 0).toDouble()),
+                            _getTrustScoreColor(
+                              (data['trustScore'] ?? 0).toDouble(),
+                            ),
                           ),
                         ),
                       ),
@@ -529,85 +577,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
 
-              // Subscription Section
-              const Divider(),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  'Subscription',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+              _buildReviewsReceivedSection(user.uid),
+
+              _buildPlanCard(
+                data: data,
+                isPremium: isPremium,
+                activeListingCount: activeListingCount,
               ),
-              if (data['subscriptionTier'] == 'premium' &&
-                  SubscriptionService.isPremiumActive(data)) ...[
-                ListTile(
-                  leading: Icon(
-                    Icons.verified_rounded,
-                    color: Colors.amber.shade700,
-                  ),
-                  title: const Text('Premium Active'),
-                  subtitle: Text(
-                    'Expires: ${_formatDate(data['premiumExpiryDate'])}',
-                  ),
-                  trailing: const PremiumBadge(),
-                ),
-              ] else ...[                
-                Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: () {
-                      Navigator.push(
-                        this.context,
-                        MaterialPageRoute(
-                          builder: (_) => const PremiumScreen(),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: Colors.amber.shade50,
-                            child: Icon(
-                              Icons.workspace_premium,
-                              color: Colors.amber.shade700,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Go Premium',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                Text(
-                                  'Unlock unlimited listings and boosted visibility',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 16,
-                            color: Colors.grey.shade400,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
 
               const Divider(),
 
@@ -656,7 +632,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     const Icon(Icons.image),
                               ),
                         title: Text(item.title),
-                        subtitle: Text("RM ${item.price.toStringAsFixed(2)}"),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("RM ${item.price.toStringAsFixed(2)}"),
+                            const SizedBox(height: 4),
+                            _buildListingStatusChip(item.status),
+                          ],
+                        ),
+                        isThreeLine: true,
                         onTap: () {
                           Navigator.push(
                             context,
@@ -678,6 +662,164 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildListingStatusChip(String status) {
+    final normalized = status.trim().toLowerCase();
+    final style = _listingStatusStyle(normalized);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: style.foreground.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        style.label,
+        style: TextStyle(
+          color: style.foreground,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  _ListingStatusStyle _listingStatusStyle(String status) {
+    switch (status) {
+      case 'available':
+        return _ListingStatusStyle(
+          label: 'Available',
+          foreground: Colors.green.shade800,
+          background: Colors.green.shade50,
+        );
+      case 'reserved':
+        return _ListingStatusStyle(
+          label: 'Reserved',
+          foreground: Colors.orange.shade900,
+          background: Colors.orange.shade50,
+        );
+      case 'sold':
+        return _ListingStatusStyle(
+          label: 'Sold',
+          foreground: Colors.blueGrey.shade800,
+          background: Colors.blueGrey.shade50,
+        );
+      case 'hidden':
+      case 'inactive':
+        return _ListingStatusStyle(
+          label: 'Inactive',
+          foreground: Colors.grey.shade800,
+          background: Colors.grey.shade100,
+        );
+      default:
+        return _ListingStatusStyle(
+          label: status.isEmpty
+              ? 'Unknown'
+              : status[0].toUpperCase() + status.substring(1),
+          foreground: Colors.grey.shade800,
+          background: Colors.grey.shade100,
+        );
+    }
+  }
+
+  Widget _buildReviewsReceivedSection(String userId) {
+    return StreamBuilder<List<ReviewModel>>(
+      stream: ReviewService.getReviewsForUser(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: LinearProgressIndicator(minHeight: 3),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text('Failed to load reviews'),
+          );
+        }
+
+        final reviews = snapshot.data ?? const <ReviewModel>[];
+        final averageRating = reviews.isEmpty
+            ? 0.0
+            : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
+                  reviews.length;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Reviews Received',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (reviews.isNotEmpty)
+                    Text(
+                      '${reviews.length} review${reviews.length == 1 ? '' : 's'}',
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _buildReviewStars(averageRating),
+                  const SizedBox(width: 8),
+                  Text(
+                    reviews.isEmpty
+                        ? 'No stars yet'
+                        : averageRating.toStringAsFixed(1),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (reviews.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  'Stars from completed transaction reviews will appear here.',
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              )
+            else
+              ...reviews.take(3).map((review) => ReviewCard(review: review)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildReviewStars(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final starNumber = index + 1;
+        final icon = rating >= starNumber
+            ? Icons.star_rounded
+            : rating >= starNumber - 0.5
+            ? Icons.star_half_rounded
+            : Icons.star_border_rounded;
+
+        return Icon(icon, size: 22, color: Colors.amber.shade700);
+      }),
+    );
+  }
+
   String _formatDate(dynamic date) {
     if (date == null) return '';
     DateTime dt;
@@ -690,4 +832,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     return '${dt.day}/${dt.month}/${dt.year}';
   }
+
+  Widget _buildPlanCard({
+    required Map<String, dynamic> data,
+    required bool isPremium,
+    required int activeListingCount,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: isPremium
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        PremiumBadge(),
+                        Spacer(),
+                        Icon(Icons.workspace_premium, color: Colors.amber),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Unlimited listings enabled',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('Boosted visibility active'),
+                    if (_formatDate(data['premiumExpiryDate']).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Expires: ${_formatDate(data['premiumExpiryDate'])}',
+                      ),
+                    ],
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Free Plan',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('$activeListingCount / 5 active listings used'),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Upgrade for unlimited listings and boosted visibility.',
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PremiumScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.workspace_premium),
+                        label: const Text('Upgrade to Premium'),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ListingStatusStyle {
+  const _ListingStatusStyle({
+    required this.label,
+    required this.foreground,
+    required this.background,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
 }

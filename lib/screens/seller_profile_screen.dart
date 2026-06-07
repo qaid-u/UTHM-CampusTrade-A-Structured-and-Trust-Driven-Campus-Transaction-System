@@ -6,7 +6,9 @@ import '../models/item_model.dart';
 import '../models/review_model.dart';
 import '../services/item_service.dart';
 import '../services/review_service.dart';
+import '../services/subscription_service.dart';
 import '../widgets/item_card.dart';
+import '../widgets/premium_badge.dart';
 import '../widgets/review_card.dart';
 import 'item_detail_screen.dart';
 
@@ -35,15 +37,18 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
         .collection('users')
         .doc(widget.sellerId)
         .snapshots()
-        .listen((doc) {
-      if (!mounted) return;
-      setState(() {
-        _userData = doc.data();
-        _loadingProfile = false;
-      });
-    }, onError: (_) {
-      if (mounted) setState(() => _loadingProfile = false);
-    });
+        .listen(
+          (doc) {
+            if (!mounted) return;
+            setState(() {
+              _userData = doc.data();
+              _loadingProfile = false;
+            });
+          },
+          onError: (_) {
+            if (mounted) setState(() => _loadingProfile = false);
+          },
+        );
   }
 
   @override
@@ -71,8 +76,18 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
       return '';
     }
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
@@ -102,6 +117,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     final completedTransactions = data['completedTransactions'] ?? 0;
     final activeListingCount = data['activeListingCount'] ?? 0;
     final createdAt = data['createdAt'];
+    final isPremium = SubscriptionService.isPremiumActive(data);
 
     return Scaffold(
       appBar: AppBar(title: Text(name)),
@@ -131,6 +147,29 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  if (isPremium)
+                    const PremiumBadge()
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Text(
+                        'Student Seller',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 4),
                   Text(
                     _maskStudentId(studentId),
@@ -198,10 +237,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                 children: [
                   const Text(
                     'Active Listings',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(width: 8),
                   Container(
@@ -235,10 +271,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 'Reviews',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
             const SizedBox(height: 8),
@@ -251,7 +284,12 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     );
   }
 
-  Widget _buildStatCard(IconData icon, String value, String label, Color color) {
+  Widget _buildStatCard(
+    IconData icon,
+    String value,
+    String label,
+    Color color,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
@@ -275,10 +313,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -328,10 +363,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'No active listings',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                   ),
                 ],
               ),
@@ -410,10 +442,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'No reviews yet',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                   ),
                 ],
               ),

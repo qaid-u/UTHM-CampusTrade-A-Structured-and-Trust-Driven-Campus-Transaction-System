@@ -30,6 +30,25 @@ class ReviewService {
     unawaited(TrustScoreService.instance.recalculateForUser(revieweeId));
   }
 
+  /// Checks the write-once anonymous review document for this reviewer.
+  static Future<bool> hasUserReviewed({
+    required String transactionId,
+    required String reviewerId,
+  }) async {
+    try {
+      final docId = '${transactionId}_$reviewerId';
+      final doc = await _db
+          .collection('reviews')
+          .doc(docId)
+          .get()
+          .timeout(const Duration(seconds: 5));
+      return doc.exists;
+    } catch (e) {
+      debugPrint('ReviewService.hasUserReviewed error: $e');
+      return false;
+    }
+  }
+
   /// Stream reviews for a specific user (reviewee), newest first.
   /// Used in SellerProfileScreen for real-time updates.
   static Stream<List<ReviewModel>> getReviewsForUser(String userId) {
@@ -39,17 +58,15 @@ class ReviewService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => ReviewModel.fromFirestore(doc))
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) => ReviewModel.fromFirestore(doc))
+              .toList();
+        });
   }
 
   /// One-time fetch of reviews for a specific user.
   /// Use when a stream is not needed.
-  static Future<List<ReviewModel>> getReviewsForUserOnce(
-    String userId,
-  ) async {
+  static Future<List<ReviewModel>> getReviewsForUserOnce(String userId) async {
     try {
       final snapshot = await _db
           .collection('reviews')

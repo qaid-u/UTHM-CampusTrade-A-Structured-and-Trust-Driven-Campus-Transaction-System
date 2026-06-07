@@ -8,6 +8,7 @@ class ItemModel {
   final String sellerName;
   final String sellerImage;
   final String sellerStudentId;
+  final bool sellerIsPremium;
 
   // Item data
   final String title;
@@ -38,6 +39,7 @@ class ItemModel {
     this.sellerName = '',
     this.sellerImage = '',
     this.sellerStudentId = '',
+    this.sellerIsPremium = false,
     required this.title,
     this.description = '',
     required this.price,
@@ -58,6 +60,16 @@ class ItemModel {
   factory ItemModel.fromJson(Map<String, dynamic> json) {
     final imagesList = json['images'] as List<dynamic>? ?? [];
     final images = imagesList.map((e) => e.toString()).toList();
+    final legacyImage =
+        (json['imageUrl'] ??
+                json['image'] ??
+                json['photoUrl'] ??
+                json['thumbnail'] ??
+                '')
+            .toString();
+    if (images.isEmpty && legacyImage.isNotEmpty) {
+      images.add(legacyImage);
+    }
 
     return ItemModel(
       id: json['id'] ?? json['itemId'] ?? '',
@@ -65,6 +77,7 @@ class ItemModel {
       sellerName: json['sellerName'] ?? '',
       sellerImage: json['sellerImage'] ?? '',
       sellerStudentId: json['sellerStudentId'] ?? '',
+      sellerIsPremium: json['sellerIsPremium'] ?? false,
       title: json['title'] ?? '',
       description: json['description'] ?? '',
       price: _readDouble(json['price']),
@@ -73,7 +86,9 @@ class ItemModel {
       meetupLocation: json['meetupLocation'] ?? '',
       meetupLatitude: _readDouble(json['meetupLatitude']),
       meetupLongitude: _readDouble(json['meetupLongitude']),
-      thumbnail: json['thumbnail'] ?? (images.isNotEmpty ? images.first : ''),
+      thumbnail: (json['thumbnail'] ?? '').toString().isNotEmpty
+          ? json['thumbnail']
+          : (images.isNotEmpty ? images.first : ''),
       images: images,
       status: json['status'] ?? 'available',
       createdAt: _readTimestamp(json['createdAt']),
@@ -94,6 +109,7 @@ class ItemModel {
       'sellerName': sellerName,
       'sellerImage': sellerImage,
       'sellerStudentId': sellerStudentId,
+      'sellerIsPremium': sellerIsPremium,
       'title': title,
       'description': description,
       'price': price,
@@ -108,7 +124,7 @@ class ItemModel {
       'createdAt': createdAt,
       'isFeatured': isFeatured,
       'isBoosted': isBoosted,
-      'boostedAt': boostedAt ?? FieldValue.serverTimestamp(),
+      if (isBoosted) 'boostedAt': boostedAt ?? FieldValue.serverTimestamp(),
     };
   }
 

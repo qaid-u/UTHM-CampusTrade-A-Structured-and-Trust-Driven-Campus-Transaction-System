@@ -23,7 +23,8 @@ class SubscriptionService {
   static bool isPremiumActive(Map<String, dynamic>? userData) {
     if (userData == null) return false;
     final tier = userData['subscriptionTier'] ?? 'free';
-    if (tier != 'premium') return false;
+    final active = userData['premiumActive'];
+    if (tier != 'premium' && active != true) return false;
 
     // Check expiry date
     final expiryRaw = userData['premiumExpiryDate'];
@@ -51,6 +52,11 @@ class SubscriptionService {
     final uid = userData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
 
+    final activeCount = await activeListingCount(uid);
+    return activeCount < 5;
+  }
+
+  static Future<int> activeListingCount(String uid) async {
     try {
       final count = await FirebaseFirestore.instance
           .collection('items')
@@ -60,10 +66,29 @@ class SubscriptionService {
           .get()
           .timeout(const Duration(seconds: 5));
 
-      return (count.count ?? 0) < 5;
+      return count.count ?? 0;
     } catch (e) {
       debugPrint('[SubscriptionService] Error counting listings: $e');
-      return false;
+      try {
+        final fallback = await FirebaseFirestore.instance
+            .collection('items')
+            .where('sellerId', isEqualTo: uid)
+            .limit(20)
+            .get()
+            .timeout(const Duration(seconds: 5));
+
+        final activeCount = fallback.docs.where((doc) {
+          final status = doc.data()['status']?.toString() ?? 'available';
+          return status == 'available';
+        }).length;
+
+        return activeCount;
+      } catch (fallbackError) {
+        debugPrint(
+          '[SubscriptionService] Fallback listing count failed: $fallbackError',
+        );
+        return 0;
+      }
     }
   }
 
@@ -110,6 +135,7 @@ class SubscriptionService {
       if (user != null) {
         await _db.collection('users').doc(user.uid).update({
           'subscriptionTier': 'free',
+          'premiumActive': false,
           'premiumExpiryDate': FieldValue.delete(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -126,11 +152,13 @@ class SubscriptionService {
     if (user == null) throw Exception('User not authenticated');
 
     final now = DateTime.now();
-    final expiry =
-        yearly ? now.add(const Duration(days: 365)) : now.add(const Duration(days: 30));
+    final expiry = yearly
+        ? now.add(const Duration(days: 365))
+        : now.add(const Duration(days: 30));
 
     await _db.collection('users').doc(user.uid).update({
       'subscriptionTier': 'premium',
+      'premiumActive': true,
       'premiumExpiryDate': Timestamp.fromDate(expiry),
       'updatedAt': FieldValue.serverTimestamp(),
     });

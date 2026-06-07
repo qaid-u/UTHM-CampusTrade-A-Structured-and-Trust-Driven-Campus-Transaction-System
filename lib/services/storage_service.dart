@@ -47,11 +47,12 @@ class StorageService {
       throw Exception("Empty image data");
     }
 
+    final compressed = _compressImage(bytes, maxWidth: 720);
     final ref = _storage.ref().child('users/$uid/profile.jpg');
 
     try {
       final uploadTask = await ref.putData(
-        bytes,
+        compressed,
         SettableMetadata(contentType: 'image/jpeg'),
       );
 
@@ -164,6 +165,7 @@ class StorageService {
       throw Exception("Failed to delete item images: $e");
     }
   }
+
   /// ---------------------------
   /// CHAT RECEIPT IMAGES
   /// ---------------------------

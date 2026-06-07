@@ -7,14 +7,17 @@ import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/offer_message_card.dart';
+import '../widgets/premium_badge.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/storage_service.dart';
 import '../services/review_service.dart';
+import '../services/media_feedback_service.dart';
 import 'meetup_location_screen.dart';
 import 'seller_profile_screen.dart';
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
 import '../services/offer_service.dart';
+import '../services/subscription_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -35,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _itemTitle;
   String? _itemId;
   String? _otherUserName;
+  bool _otherIsPremium = false;
   String? _itemStatus;
   String? _itemThumbnail;
   double _itemPrice = 0.0;
@@ -50,11 +54,11 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     // CRITICAL: Initialize user after auth is ready
     user = FirebaseAuth.instance.currentUser;
-    
+
     if (user == null) {
       debugPrint('⚠️ ChatScreen: User not authenticated');
     }
-    
+
     _messagesStream = FirebaseFirestore.instance
         .collection('chatRooms')
         .doc(widget.roomId)
@@ -75,42 +79,54 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection('chatRooms')
         .doc(widget.roomId)
         .snapshots()
-        .listen((roomDoc) {
-      debugPrint('[ChatScreen] _listenChatRoomInfo snapshot received. exists: ${roomDoc.exists}');
-      if (roomDoc.exists && mounted) {
-        final data = roomDoc.data();
-        final sellerId = data?['sellerId'];
-        final buyerId = data?['buyerId'];
-        final itemId = data?['itemId'];
-        final itemTitle = data?['itemTitle'] ?? 'Item';
-        final transactionId = data?['transactionId'];
-        debugPrint('[ChatScreen] _listenChatRoomInfo data: sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId, transactionId=$transactionId');
+        .listen(
+          (roomDoc) {
+            debugPrint(
+              '[ChatScreen] _listenChatRoomInfo snapshot received. exists: ${roomDoc.exists}',
+            );
+            if (roomDoc.exists && mounted) {
+              final data = roomDoc.data();
+              final sellerId = data?['sellerId'];
+              final buyerId = data?['buyerId'];
+              final itemId = data?['itemId'];
+              final itemTitle = data?['itemTitle'] ?? 'Item';
+              final transactionId = data?['transactionId'];
+              debugPrint(
+                '[ChatScreen] _listenChatRoomInfo data: sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId, transactionId=$transactionId',
+              );
 
-        setState(() {
-          _sellerId = sellerId;
-          _buyerId = buyerId;
-          _itemTitle = itemTitle;
-          _itemId = itemId;
-          if (transactionId != _transactionId) {
-            debugPrint('[ChatScreen] _listenChatRoomInfo: transactionId changed from $_transactionId to $transactionId');
-            _transactionId = transactionId;
-            if (transactionId != null && transactionId.toString().isNotEmpty) {
-              debugPrint('[ChatScreen] _listenChatRoomInfo: creating transaction stream for $transactionId');
-              _transactionStream = FirebaseFirestore.instance
-                  .collection('transactions')
-                  .doc(transactionId.toString())
-                  .snapshots();
-            } else {
-              _transactionStream = null;
+              setState(() {
+                _sellerId = sellerId;
+                _buyerId = buyerId;
+                _itemTitle = itemTitle;
+                _itemId = itemId;
+                if (transactionId != _transactionId) {
+                  debugPrint(
+                    '[ChatScreen] _listenChatRoomInfo: transactionId changed from $_transactionId to $transactionId',
+                  );
+                  _transactionId = transactionId;
+                  if (transactionId != null &&
+                      transactionId.toString().isNotEmpty) {
+                    debugPrint(
+                      '[ChatScreen] _listenChatRoomInfo: creating transaction stream for $transactionId',
+                    );
+                    _transactionStream = FirebaseFirestore.instance
+                        .collection('transactions')
+                        .doc(transactionId.toString())
+                        .snapshots();
+                  } else {
+                    _transactionStream = null;
+                  }
+                }
+              });
+
+              _loadCounterpartNameAndItemStatus(sellerId, buyerId, itemId);
             }
-          }
-        });
-
-        _loadCounterpartNameAndItemStatus(sellerId, buyerId, itemId);
-      }
-    }, onError: (e) {
-      debugPrint('Error listening to chat room info: $e');
-    });
+          },
+          onError: (e) {
+            debugPrint('Error listening to chat room info: $e');
+          },
+        );
   }
 
   Future<void> _loadCounterpartNameAndItemStatus(
@@ -118,21 +134,28 @@ class _ChatScreenState extends State<ChatScreen> {
     String? buyerId,
     String? itemId,
   ) async {
-    debugPrint('[ChatScreen] _loadCounterpartNameAndItemStatus start. sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId');
+    debugPrint(
+      '[ChatScreen] _loadCounterpartNameAndItemStatus start. sellerId=$sellerId, buyerId=$buyerId, itemId=$itemId',
+    );
     try {
       String? otherUserName;
       String? itemStatus;
 
       if (user != null && sellerId != null && buyerId != null) {
         final otherUserId = user!.uid == sellerId ? buyerId : sellerId;
-        debugPrint('[ChatScreen] Fetching counterpart user document for $otherUserId');
+        debugPrint(
+          '[ChatScreen] Fetching counterpart user document for $otherUserId',
+        );
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(otherUserId)
             .get()
             .timeout(const Duration(seconds: 2));
         otherUserName = userDoc.data()?['name'];
-        debugPrint('[ChatScreen] Fetching counterpart user finished. Name: $otherUserName');
+        _otherIsPremium = SubscriptionService.isPremiumActive(userDoc.data());
+        debugPrint(
+          '[ChatScreen] Fetching counterpart user finished. Name: $otherUserName',
+        );
       }
 
       if (itemId != null) {
@@ -151,7 +174,9 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (mounted) {
-        debugPrint('[ChatScreen] Updating details state: otherUserName=$otherUserName, itemStatus=$itemStatus');
+        debugPrint(
+          '[ChatScreen] Updating details state: otherUserName=$otherUserName, itemStatus=$itemStatus',
+        );
         setState(() {
           if (otherUserName != null) _otherUserName = otherUserName;
           if (itemStatus != null) _itemStatus = itemStatus;
@@ -185,12 +210,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (user == null) return;
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
       if (picked == null) return;
 
       setState(() => _sending = true);
       final bytes = await picked.readAsBytes();
-      
+
       final imageUrl = await StorageService.instance.uploadChatImage(
         roomId: widget.roomId,
         bytes: bytes,
@@ -202,11 +230,12 @@ class _ChatScreenState extends State<ChatScreen> {
         text: imageUrl,
         type: 'image',
       );
-
     } catch (e) {
       debugPrint('Error picking/uploading image: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send image: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to send image: $e')));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -216,13 +245,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
-    
+
     // CRITICAL: Check if user is authenticated
     if (user == null) {
       debugPrint('❌ ChatScreen: Cannot send message - user not authenticated');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Authentication required. Please log in again.")),
+          const SnackBar(
+            content: Text("Authentication required. Please log in again."),
+          ),
         );
       }
       return;
@@ -234,21 +265,21 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       debugPrint('📤 Sending message from user: ${user!.uid}');
       debugPrint('📝 Room ID: ${widget.roomId}');
-      
+
       await ChatService.sendMessage(
         roomId: widget.roomId,
         senderId: user!.uid,
         text: text,
         type: 'text',
       );
-      
+
       debugPrint('✅ Message sent successfully');
     } catch (e) {
       debugPrint('❌ Failed to send message: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to send message: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed to send message: $e")));
       }
     } finally {
       if (mounted) {
@@ -277,11 +308,16 @@ class _ChatScreenState extends State<ChatScreen> {
     bool submitting = false;
 
     // Fetch the transaction ID from the chat room metadata
-    final roomDoc = await FirebaseFirestore.instance.collection('chatRooms').doc(widget.roomId).get();
+    final roomDoc = await FirebaseFirestore.instance
+        .collection('chatRooms')
+        .doc(widget.roomId)
+        .get();
     final transactionId = roomDoc.data()?['transactionId'];
 
     if (transactionId == null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Transaction not found.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Transaction not found.')),
+      );
       return;
     }
 
@@ -334,39 +370,53 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: submitting ? null : () async {
-                    setDialogState(() => submitting = true);
-                    try {
-                      final targetUserId = (user!.uid == _buyerId) ? _sellerId! : _buyerId!;
-                      await ReviewService.submitReview(
-                        transactionId: transactionId,
-                        reviewerId: user!.uid,
-                        revieweeId: targetUserId,
-                        rating: rating,
-                        comment: reviewController.text.trim(),
-                      );
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Review submitted! This will be public once both parties review.'))
-                        );
-                      }
-                    } catch (e) {
-                      setDialogState(() => submitting = false);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    }
-                  },
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          setDialogState(() => submitting = true);
+                          try {
+                            final targetUserId = (user!.uid == _buyerId)
+                                ? _sellerId!
+                                : _buyerId!;
+                            await ReviewService.submitReview(
+                              transactionId: transactionId,
+                              reviewerId: user!.uid,
+                              revieweeId: targetUserId,
+                              rating: rating,
+                              comment: reviewController.text.trim(),
+                            );
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Review submitted! This will be public once both parties review.',
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() => submitting = false);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error: $e')),
+                              );
+                            }
+                          }
+                        },
                   child: submitting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Text('Submit'),
                 ),
               ],
             );
-          }
+          },
         );
-      }
+      },
     );
   }
 
@@ -404,20 +454,27 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () {
               if (controller.text.trim().isEmpty) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('Please enter a cancellation reason.')),
+                  const SnackBar(
+                    content: Text('Please enter a cancellation reason.'),
+                  ),
                 );
                 return;
               }
               Navigator.pop(ctx, true);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Yes, Cancel Deal'),
           ),
         ],
       ),
     );
 
-    if (confirm == true && controller.text.trim().isNotEmpty && _transactionId != null) {
+    if (confirm == true &&
+        controller.text.trim().isNotEmpty &&
+        _transactionId != null) {
       try {
         await TransactionService.instance.cancelTransaction(
           transactionId: _transactionId!,
@@ -427,14 +484,16 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Transaction successfully cancelled.')),
+            const SnackBar(
+              content: Text('Transaction successfully cancelled.'),
+            ),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to cancel: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to cancel: $e')));
         }
       }
     }
@@ -444,7 +503,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (user == null || _transactionId == null) return;
     try {
       final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+      );
       if (picked == null) return;
 
       setState(() => _sending = true);
@@ -466,15 +528,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment receipt uploaded successfully!')),
+          const SnackBar(
+            content: Text('Payment receipt uploaded successfully!'),
+          ),
         );
       }
     } catch (e) {
       debugPrint('Error uploading payment receipt: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to upload receipt: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to upload receipt: $e')));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -489,9 +553,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -508,56 +570,87 @@ class _ChatScreenState extends State<ChatScreen> {
                   width: 80,
                   height: 80,
                   color: Colors.grey.shade200,
-                  child: Icon(Icons.image, size: 32, color: Colors.grey.shade400),
+                  child: Icon(
+                    Icons.image,
+                    size: 32,
+                    color: Colors.grey.shade400,
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_itemTitle ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(
-                  'RM ${_itemPrice.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    _buildItemStatusChip(_itemStatus ?? 'available'),
-                    if (user!.uid == _buyerId && (_itemSellerName ?? '').isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text('by $_itemSellerName', style: TextStyle(fontSize: 11, color: Colors.grey.shade600), overflow: TextOverflow.ellipsis),
-                      ),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _itemTitle ?? '',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'RM ${_itemPrice.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _buildItemStatusChip(_itemStatus ?? 'available'),
+                      if (user!.uid == _buyerId &&
+                          (_itemSellerName ?? '').isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'by $_itemSellerName',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                if (user!.uid == _buyerId && _itemStatus != 'sold' && _transactionId == null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Center(
-                      child: SizedBox(
-                        height: 36,
-                        child: ElevatedButton.icon(
-                          onPressed: _showMakeOfferDialog,
-                          icon: const Icon(Icons.local_offer, size: 16),
-                          label: const Text('Offer', style: TextStyle(fontSize: 13)),
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.orange.shade600,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  if (user!.uid == _buyerId &&
+                      _itemStatus != 'sold' &&
+                      _transactionId == null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Center(
+                        child: SizedBox(
+                          height: 36,
+                          child: ElevatedButton.icon(
+                            onPressed: _showMakeOfferDialog,
+                            icon: const Icon(Icons.local_offer, size: 16),
+                            label: const Text(
+                              'Offer',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.orange.shade600,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
             ),
           ],
         ),
@@ -619,18 +712,32 @@ class _ChatScreenState extends State<ChatScreen> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(hintText: 'Enter your offer price', prefixText: 'RM '),
+          decoration: const InputDecoration(
+            hintText: 'Enter your offer price',
+            prefixText: 'RM ',
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, double.tryParse(controller.text)),
+            onPressed: () =>
+                Navigator.pop(context, double.tryParse(controller.text)),
             child: const Text('Submit'),
           ),
         ],
       ),
     );
-    if (result == null || result <= 0 || !mounted) return;
+    if (result == null || !mounted) return;
+    if (result <= 0) {
+      MediaFeedbackService.instance.playError();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid offer amount.')),
+      );
+      return;
+    }
     try {
       await OfferService.createOffer(
         roomId: widget.roomId,
@@ -640,30 +747,38 @@ class _ChatScreenState extends State<ChatScreen> {
         sellerId: _sellerId!,
         price: result,
       );
+      MediaFeedbackService.instance.playNotification();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Offer sent!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Offer sent!')));
       }
     } catch (e) {
+      MediaFeedbackService.instance.playError();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send offer: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to send offer: $e')));
       }
     }
   }
 
   Widget _buildTransactionBanner() {
-    debugPrint('[ChatScreen] _buildTransactionBanner logic check: _transactionId=$_transactionId, hasStream=${_transactionStream != null}');
-    if (_transactionId == null || _transactionId!.isEmpty || _transactionStream == null) {
+    debugPrint(
+      '[ChatScreen] _buildTransactionBanner logic check: _transactionId=$_transactionId, hasStream=${_transactionStream != null}',
+    );
+    if (_transactionId == null ||
+        _transactionId!.isEmpty ||
+        _transactionStream == null) {
       return const SizedBox.shrink();
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _transactionStream,
       builder: (context, snapshot) {
-        debugPrint('[ChatScreen] _buildTransactionBanner StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, exists=${snapshot.data?.exists}, hasError=${snapshot.hasError}');
+        debugPrint(
+          '[ChatScreen] _buildTransactionBanner StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, exists=${snapshot.data?.exists}, hasError=${snapshot.hasError}',
+        );
         if (snapshot.hasError) {
           return Container(
             width: double.infinity,
@@ -671,7 +786,11 @@ class _ChatScreenState extends State<ChatScreen> {
             color: Colors.red.shade50,
             child: Text(
               'Error loading transaction info: ${snapshot.error}',
-              style: TextStyle(color: Colors.red.shade900, fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.red.shade900,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           );
         }
@@ -684,7 +803,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final meetupLocation = tx.meetupLocation;
         final meetupLat = tx.meetupLatitude;
         final meetupLng = tx.meetupLongitude;
-        
+
         final buyerMeetupConfirmed = tx.buyerMeetupConfirmed;
         final sellerMeetupConfirmed = tx.sellerMeetupConfirmed;
         final receiptUploaded = tx.receiptUploaded;
@@ -707,9 +826,10 @@ class _ChatScreenState extends State<ChatScreen> {
             bannerColor = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
             title = 'Deal Accepted! 🤝';
-            
+
             if (meetupLocation.isEmpty) {
-              subtitle = 'A meetup point needs to be selected to coordinate the transaction.';
+              subtitle =
+                  'A meetup point needs to be selected to coordinate the transaction.';
               if (isSeller) {
                 actions = [
                   ElevatedButton.icon(
@@ -717,7 +837,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(0, 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     icon: const Icon(Icons.map, size: 16),
                     label: const Text('Suggest Meetup Location'),
@@ -743,18 +866,31 @@ class _ChatScreenState extends State<ChatScreen> {
                 ];
               } else {
                 actions = [
-                  const Text('Awaiting seller to suggest meetup location...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                  const Text(
+                    'Awaiting seller to suggest meetup location...',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      fontSize: 13,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
                 ];
               }
             } else {
-              final userConfirmed = isSeller ? sellerMeetupConfirmed : buyerMeetupConfirmed;
-              final peerConfirmed = isSeller ? buyerMeetupConfirmed : sellerMeetupConfirmed;
-              
+              final userConfirmed = isSeller
+                  ? sellerMeetupConfirmed
+                  : buyerMeetupConfirmed;
+              final peerConfirmed = isSeller
+                  ? buyerMeetupConfirmed
+                  : sellerMeetupConfirmed;
+
               subtitle = 'Suggested Meetup: $meetupLocation\n';
               if (isSafeZone) {
-                subtitle += '🛡️ UTHM Safe Zone Verified (Library/HEPA/Cafes)\n';
+                subtitle +=
+                    '🛡️ UTHM Safe Zone Verified (Library/HEPA/Cafes)\n';
               }
-              subtitle += 'Your confirmation: ${userConfirmed ? "Confirmed ✓" : "Pending"}\n'
+              subtitle +=
+                  'Your confirmation: ${userConfirmed ? "Confirmed ✓" : "Pending"}\n'
                   'Partner confirmation: ${peerConfirmed ? "Confirmed ✓" : "Pending"}';
 
               actions = [
@@ -764,7 +900,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(0, 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     icon: const Icon(Icons.check_circle, size: 16),
                     label: const Text('Confirm Location'),
@@ -783,7 +922,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       foregroundColor: Colors.blue,
                       side: const BorderSide(color: Colors.blue),
                       minimumSize: const Size(0, 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     icon: const Icon(Icons.map, size: 16),
                     label: const Text('Suggest Different Location'),
@@ -791,7 +933,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => MeetupLocationScreen(selected: meetupLocation),
+                          builder: (context) =>
+                              MeetupLocationScreen(selected: meetupLocation),
                         ),
                       );
                       if (result != null && result is Map) {
@@ -816,7 +959,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
                   minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 icon: const Icon(Icons.cancel_outlined, size: 16),
                 label: const Text('Cancel Deal'),
@@ -836,7 +982,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
             if (!paymentVerified) {
               if (!receiptUploaded) {
-                subtitle += 'Payment Status: Awaiting DuitNow transfer of RM ${finalPrice.toStringAsFixed(2)}.';
+                subtitle +=
+                    'Payment Status: Awaiting DuitNow transfer of RM ${finalPrice.toStringAsFixed(2)}.';
                 if (!isSeller) {
                   actions = [
                     ElevatedButton.icon(
@@ -844,7 +991,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                       icon: const Icon(Icons.receipt_long, size: 16),
                       label: const Text('Upload DuitNow Receipt'),
@@ -853,11 +1003,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   ];
                 } else {
                   actions = [
-                    const Text('Awaiting buyer to upload payment receipt...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                    const Text(
+                      'Awaiting buyer to upload payment receipt...',
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        fontSize: 13,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
                   ];
                 }
               } else {
-                subtitle += 'Payment Status: Receipt uploaded. Seller verification required.';
+                subtitle +=
+                    'Payment Status: Receipt uploaded. Seller verification required.';
                 if (isSeller) {
                   actions = [
                     if (receiptUrl != null)
@@ -866,7 +1024,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           backgroundColor: Colors.blue,
                           foregroundColor: Colors.white,
                           minimumSize: const Size(0, 36),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                         ),
                         icon: const Icon(Icons.visibility, size: 16),
                         label: const Text('View Receipt'),
@@ -891,7 +1052,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                       icon: const Icon(Icons.check_circle, size: 16),
                       label: const Text('Verify Payment'),
@@ -906,12 +1070,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   ];
                 } else {
                   actions = [
-                    const Text('Awaiting seller verification of your receipt...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                    const Text(
+                      'Awaiting seller verification of your receipt...',
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        fontSize: 13,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
                   ];
                 }
               }
             } else {
-              subtitle += 'Payment Status: Verified! Meet up now to collect your item.';
+              subtitle +=
+                  'Payment Status: Verified! Meet up now to collect your item.';
               if (!isSeller) {
                 actions = [
                   ElevatedButton.icon(
@@ -919,7 +1091,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(0, 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
                     icon: const Icon(Icons.done_all, size: 16),
                     label: const Text('Confirm Item Received'),
@@ -949,13 +1124,21 @@ class _ChatScreenState extends State<ChatScreen> {
                           roomId: widget.roomId,
                           actionUserId: user!.uid,
                         );
+                        MediaFeedbackService.instance.playTransactionComplete();
                       }
                     },
                   ),
                 ];
               } else {
                 actions = [
-                  const Text('Awaiting buyer to confirm receipt of item...', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.blueGrey)),
+                  const Text(
+                    'Awaiting buyer to confirm receipt of item...',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      fontSize: 13,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
                 ];
               }
             }
@@ -967,7 +1150,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red),
                   minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 icon: const Icon(Icons.cancel_outlined, size: 16),
                 label: const Text('Cancel Deal'),
@@ -987,7 +1173,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   backgroundColor: Colors.amber.shade700,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 icon: const Icon(Icons.rate_review, size: 16),
                 label: const Text('Leave a Review'),
@@ -1002,14 +1191,15 @@ class _ChatScreenState extends State<ChatScreen> {
             title = 'Deal Cancelled ❌';
             final cancelledBy = tx.cancelledBy;
             final reason = tx.cancelledReason ?? '';
-            subtitle = 'Cancelled by: ${cancelledBy == user!.uid ? "You" : "Partner"}\nReason: $reason';
+            subtitle =
+                'Cancelled by: ${cancelledBy == user!.uid ? "You" : "Partner"}\nReason: $reason';
             actions = [];
             break;
 
           default:
         }
- 
-        return Container(
+
+        final banner = Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1021,12 +1211,20 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Text(
                 title,
-                style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: 15),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                  fontSize: 15,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(color: Colors.black87, fontSize: 12, height: 1.4),
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
               ),
               if (actions.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -1038,13 +1236,38 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
         );
+
+        if (tx.status == TransactionStatus.completed) {
+          // Interactive media element: completed state uses a lightweight
+          // success-card animation without rebuilding stream data heavily.
+          return TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 550),
+            curve: Curves.easeOutBack,
+            builder: (context, value, child) {
+              final opacity = value.clamp(0.0, 1.0);
+              return Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: 0.96 + (0.04 * opacity),
+                  child: child,
+                ),
+              );
+            },
+            child: banner,
+          );
+        }
+
+        return banner;
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('[ChatScreen] build() called. _otherUserName=$_otherUserName, _itemTitle=$_itemTitle');
+    debugPrint(
+      '[ChatScreen] build() called. _otherUserName=$_otherUserName, _itemTitle=$_itemTitle',
+    );
     if (user == null) {
       return const Scaffold(body: Center(child: Text("Not logged in")));
     }
@@ -1066,9 +1289,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => SellerProfileScreen(
-                              sellerId: otherId,
-                            ),
+                            builder: (_) =>
+                                SellerProfileScreen(sellerId: otherId),
                           ),
                         );
                       }
@@ -1081,6 +1303,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ),
+                if (_otherIsPremium) ...[
+                  const SizedBox(width: 6),
+                  const PremiumBadge(compact: true),
+                ],
                 if (_itemStatus != null && _itemStatus != 'available')
                   Container(
                     margin: const EdgeInsets.only(left: 8),
@@ -1132,7 +1358,9 @@ class _ChatScreenState extends State<ChatScreen> {
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _messagesStream,
                 builder: (context, snapshot) {
-                  debugPrint('[ChatScreen] Messages StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, count=${snapshot.data?.docs.length}, hasError=${snapshot.hasError}');
+                  debugPrint(
+                    '[ChatScreen] Messages StreamBuilder builder. connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, count=${snapshot.data?.docs.length}, hasError=${snapshot.hasError}',
+                  );
                   if (snapshot.hasError) {
                     return Center(child: Text("Error loading messages"));
                   }
@@ -1156,12 +1384,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       final text = d['text']?.toString() ?? '';
                       final type = d['type']?.toString() ?? 'text';
                       final timestamp = d['createdAt'];
-                      debugPrint('[ChatScreen] Rendering message index=$i, type=$type, text=${text.length > 30 ? text.substring(0, 30) + "..." : text}');
+                      debugPrint(
+                        '[ChatScreen] Rendering message index=$i, type=$type, text=${text.length > 30 ? text.substring(0, 30) + "..." : text}',
+                      );
 
                       String timeStr = '';
                       if (timestamp is Timestamp) {
                         final date = timestamp.toDate();
-                        timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                        timeStr =
+                            '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
                       }
 
                       if (type == 'offer') {
@@ -1184,7 +1415,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         text: text,
                         time: timeStr,
                         type: type,
-                        onReviewTap: type == 'rating_prompt' ? () => _showReviewDialog() : null,
+                        onReviewTap: type == 'rating_prompt'
+                            ? () => _showReviewDialog()
+                            : null,
                       );
                     },
                   );

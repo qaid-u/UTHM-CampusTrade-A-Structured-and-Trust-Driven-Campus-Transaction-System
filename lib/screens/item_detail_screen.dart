@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
+import '../services/media_feedback_service.dart';
 import '../services/notification_service.dart';
 import '../services/offer_service.dart';
 import '../widgets/premium_badge.dart';
@@ -62,9 +63,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open maps application'),
-          ),
+          const SnackBar(content: Text('Could not open maps application')),
         );
       }
     }
@@ -101,9 +100,21 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final meetupLatitude = (data['meetupLatitude'] ?? 0.0).toDouble();
         final meetupLongitude = (data['meetupLongitude'] ?? 0.0).toDouble();
         final hasLocation = meetupLatitude != 0.0 && meetupLongitude != 0.0;
+        final itemIsBoosted = data['isBoosted'] == true;
+        final embeddedSellerIsPremium = data['sellerIsPremium'] == true;
 
         /// 🔥 FIX: ALWAYS USE images[]
-        final List images = data['images'] ?? [];
+        final List images = (data['images'] as List?)?.toList() ?? [];
+        final legacyImage =
+            (data['imageUrl'] ??
+                    data['image'] ??
+                    data['photoUrl'] ??
+                    data['thumbnail'] ??
+                    '')
+                .toString();
+        if (images.isEmpty && legacyImage.isNotEmpty) {
+          images.add(legacyImage);
+        }
 
         final isOwner = currentUser.uid == sellerId;
 
@@ -163,6 +174,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (itemIsBoosted) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const PremiumBadge(compact: true),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Boosted visibility active',
+                        style: TextStyle(
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 const SizedBox(height: 16),
 
@@ -173,6 +202,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(description),
+                  const SizedBox(height: 16),
+                ] else ...[
+                  const Text(
+                    "Description",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "No description provided.",
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
                   const SizedBox(height: 16),
                 ],
 
@@ -207,10 +247,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                               // PERFORMANCE: Disable all gestures for static display
                               gestureRecognizers: const {},
                               initialCameraPosition: CameraPosition(
-                                target: LatLng(
-                                  meetupLatitude,
-                                  meetupLongitude,
-                                ),
+                                target: LatLng(meetupLatitude, meetupLongitude),
                                 zoom: 15,
                               ),
                               markers: {
@@ -222,8 +259,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     meetupLatitude,
                                     meetupLongitude,
                                   ),
-                                  icon:
-                                      BitmapDescriptor.defaultMarkerWithHue(
+                                  icon: BitmapDescriptor.defaultMarkerWithHue(
                                     BitmapDescriptor.hueGreen,
                                   ),
                                 ),
@@ -274,10 +310,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     final sellerData = snap.data;
                     final sellerName = sellerData?['name'] ?? 'Unknown';
                     final studentId = sellerData?['studentId'] ?? '';
-                    final isPremium = SubscriptionService.isPremiumActive(sellerData);
-                                
+                    final isPremium =
+                        SubscriptionService.isPremiumActive(sellerData) ||
+                        embeddedSellerIsPremium ||
+                        itemIsBoosted;
+
                     final profileImage = sellerData?['profileImage'] ?? '';
-                    
+
                     return Card(
                       margin: EdgeInsets.zero,
                       clipBehavior: Clip.antiAlias,
@@ -286,9 +325,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => SellerProfileScreen(
-                                sellerId: sellerId,
-                              ),
+                              builder: (_) =>
+                                  SellerProfileScreen(sellerId: sellerId),
                             ),
                           );
                         },
@@ -301,7 +339,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 children: [
                                   const Text(
                                     'Seller',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                   const Spacer(),
                                   Text(
@@ -329,13 +369,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         ? NetworkImage(profileImage)
                                         : null,
                                     child: profileImage.isEmpty
-                                        ? const Icon(Icons.person_rounded, size: 22)
+                                        ? const Icon(
+                                            Icons.person_rounded,
+                                            size: 22,
+                                          )
                                         : null,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -349,7 +393,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
-                                            if (isPremium) ...[                                              
+                                            if (isPremium) ...[
                                               const SizedBox(width: 6),
                                               const PremiumBadge(compact: true),
                                             ],
@@ -357,12 +401,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          studentId,
+                                          isPremium
+                                              ? 'Premium Seller'
+                                              : 'Student Seller',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.grey.shade600,
+                                            color: isPremium
+                                                ? Colors.amber.shade900
+                                                : Colors.grey.shade700,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
+                                        if (studentId.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            studentId,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -386,9 +445,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: (data['status'] == 'sold' || data['status'] == 'completed') ? null : () => _makeOffer(context, data),
-                          style: (data['status'] == 'sold' || data['status'] == 'completed') ? ElevatedButton.styleFrom(backgroundColor: Colors.grey) : null,
-                          child: Text((data['status'] == 'sold' || data['status'] == 'completed') ? "Item Sold" : "Make Offer"),
+                          onPressed:
+                              (data['status'] == 'sold' ||
+                                  data['status'] == 'completed')
+                              ? null
+                              : () => _makeOffer(context, data),
+                          style:
+                              (data['status'] == 'sold' ||
+                                  data['status'] == 'completed')
+                              ? ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.grey,
+                                )
+                              : null,
+                          child: Text(
+                            (data['status'] == 'sold' ||
+                                    data['status'] == 'completed')
+                                ? "Item Sold"
+                                : "Make Offer",
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -457,6 +531,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
 
     if (result == null) return;
+    if (result <= 0) {
+      MediaFeedbackService.instance.playError();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid offer amount.')),
+        );
+      }
+      return;
+    }
 
     final currentUser = AuthService.instance.currentUser!;
     final title = item['title'] ?? 'Untitled';
@@ -474,23 +557,34 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       sellerId: sellerId,
     );
 
-    await OfferService.createOffer(
-      roomId: roomId,
-      itemId: widget.itemId,
-      itemTitle: title,
-      buyerId: currentUser.uid,
-      sellerId: sellerId,
-      price: result,
-    );
+    try {
+      await OfferService.createOffer(
+        roomId: roomId,
+        itemId: widget.itemId,
+        itemTitle: title,
+        buyerId: currentUser.uid,
+        sellerId: sellerId,
+        price: result,
+      );
 
-    await NotificationService.instance.notifyUser(
-      userId: sellerId,
-      title: "New Offer",
-      body: "RM ${result.toStringAsFixed(2)}",
-      type: 'offer',
-      itemId: widget.itemId,
-      chatRoomId: roomId,
-    );
+      await NotificationService.instance.notifyUser(
+        userId: sellerId,
+        title: "New Offer",
+        body: "RM ${result.toStringAsFixed(2)}",
+        type: 'offer',
+        itemId: widget.itemId,
+        chatRoomId: roomId,
+      );
+      MediaFeedbackService.instance.playNotification();
+    } catch (e) {
+      MediaFeedbackService.instance.playError();
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to send offer: $e')));
+      }
+      return;
+    }
 
     if (!context.mounted) return;
 

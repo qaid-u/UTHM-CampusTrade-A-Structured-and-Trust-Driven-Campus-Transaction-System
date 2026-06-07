@@ -32,6 +32,44 @@ class TransactionService {
         });
   }
 
+  Stream<List<TransactionModel>> getBuyingTransactions(String userId) {
+    return _transactions
+        .where('buyerId', isEqualTo: userId)
+        .limit(50)
+        .snapshots()
+        .map(_mapAndSortTransactions);
+  }
+
+  Stream<List<TransactionModel>> getSellingTransactions(String userId) {
+    return _transactions
+        .where('sellerId', isEqualTo: userId)
+        .limit(50)
+        .snapshots()
+        .map(_mapAndSortTransactions);
+  }
+
+  Stream<List<TransactionModel>> getTransactionsByStatusForUser({
+    required String userId,
+    required TransactionStatus status,
+  }) {
+    return _transactions
+        .where('participants', arrayContains: userId)
+        .where('status', isEqualTo: status.name)
+        .limit(50)
+        .snapshots()
+        .map(_mapAndSortTransactions);
+  }
+
+  List<TransactionModel> _mapAndSortTransactions(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final list = snapshot.docs
+        .map((doc) => TransactionModel.fromFirestore(doc))
+        .toList();
+    list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return list;
+  }
+
   /// Create transaction from an accepted offer (legacy fallback)
   Future<void> createTransactionFromOffer(
     OfferModel offer,
@@ -115,10 +153,14 @@ class TransactionService {
     final price = (offerData['price'] ?? 0.0).toDouble();
 
     // Fetch item
-    final itemDoc = await firestore.collection('items').doc(itemId).get().timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => throw Exception('Timeout fetching item details'),
-    );
+    final itemDoc = await firestore
+        .collection('items')
+        .doc(itemId)
+        .get()
+        .timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => throw Exception('Timeout fetching item details'),
+        );
     final itemTitle = itemDoc.data()?['title'] ?? 'Item';
 
     // Fetch accepted offer message
@@ -153,10 +195,14 @@ class TransactionService {
           return {
             'offerDoc': doc,
             'roomId': otherRoomId,
-            'messageDoc': otherMsgs.docs.isNotEmpty ? otherMsgs.docs.first : null,
+            'messageDoc': otherMsgs.docs.isNotEmpty
+                ? otherMsgs.docs.first
+                : null,
           };
         });
-    final rejectionData = (await Future.wait(rejectionQueries)).whereType<Map<String, dynamic>>().toList();
+    final rejectionData = (await Future.wait(
+      rejectionQueries,
+    )).whereType<Map<String, dynamic>>().toList();
 
     // Construct atomic WriteBatch
     final batch = firestore.batch();
@@ -229,9 +275,11 @@ class TransactionService {
     // 7. Reject competing offers and update their messages/rooms
     final List<Future<void>> notifyTasks = [];
     for (final item in rejectionData) {
-      final otherOfferDoc = item['offerDoc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+      final otherOfferDoc =
+          item['offerDoc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
       final otherRoomId = item['roomId'] as String;
-      final otherMsgDoc = item['messageDoc'] as DocumentSnapshot<Map<String, dynamic>>?;
+      final otherMsgDoc =
+          item['messageDoc'] as DocumentSnapshot<Map<String, dynamic>>?;
 
       // Reject offer doc
       batch.update(otherOfferDoc.reference, {
@@ -291,7 +339,9 @@ class TransactionService {
     try {
       await Future.wait(notifyTasks);
     } catch (e) {
-      debugPrint('[TransactionService] Rejection notifications failed (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Rejection notifications failed (non-fatal): $e',
+      );
     }
 
     // Notify accepted buyer (isolated)
@@ -305,7 +355,9 @@ class TransactionService {
         chatRoomId: roomId,
       );
     } catch (e) {
-      debugPrint('[TransactionService] Accepted notification failed (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Accepted notification failed (non-fatal): $e',
+      );
     }
   }
 
@@ -372,7 +424,8 @@ class TransactionService {
     required String roomId,
     required String senderId,
     required String text,
-    required String type, // 'system', 'transaction_update', 'rating_prompt', etc.
+    required String
+    type, // 'system', 'transaction_update', 'rating_prompt', etc.
   }) async {
     await ChatService.sendMessage(
       roomId: roomId,
@@ -455,7 +508,8 @@ class TransactionService {
     if (!txDoc.exists) throw Exception('Transaction not found');
     final tx = TransactionModel.fromFirestore(txDoc);
 
-    if (tx.status != TransactionStatus.accepted && tx.status != TransactionStatus.meetup_pending) {
+    if (tx.status != TransactionStatus.accepted &&
+        tx.status != TransactionStatus.meetup_pending) {
       throw Exception('Cannot schedule meetup in current state');
     }
 
@@ -474,7 +528,8 @@ class TransactionService {
     await sendTransactionSystemMessage(
       roomId: roomId,
       senderId: actionUserId,
-      text: '$userName suggested meetup location: $locationName. Awaiting confirmation.',
+      text:
+          '$userName suggested meetup location: $locationName. Awaiting confirmation.',
       type: 'transaction_update',
     );
   }
@@ -534,7 +589,9 @@ class TransactionService {
         type: 'transaction_update',
       );
 
-      final otherUserId = actionUserId == updatedTx.buyerId ? updatedTx.sellerId : updatedTx.buyerId;
+      final otherUserId = actionUserId == updatedTx.buyerId
+          ? updatedTx.sellerId
+          : updatedTx.buyerId;
       try {
         await NotificationService.instance.notifyUser(
           userId: otherUserId,
@@ -545,7 +602,9 @@ class TransactionService {
           chatRoomId: roomId,
         );
       } catch (e) {
-        debugPrint('[TransactionService] Meetup notification failed (non-fatal): $e');
+        debugPrint(
+          '[TransactionService] Meetup notification failed (non-fatal): $e',
+        );
       }
     }
   }
@@ -625,7 +684,8 @@ class TransactionService {
     await sendTransactionSystemMessage(
       roomId: roomId,
       senderId: actionUserId,
-      text: 'Payment verified by seller. Awaiting item collection confirmation.',
+      text:
+          'Payment verified by seller. Awaiting item collection confirmation.',
       type: 'transaction_update',
     );
 
@@ -633,13 +693,16 @@ class TransactionService {
       await NotificationService.instance.notifyUser(
         userId: tx.buyerId,
         title: "Payment Verified",
-        body: "Seller verified your payment. You can now confirm item collection.",
+        body:
+            "Seller verified your payment. You can now confirm item collection.",
         type: 'transaction_update',
         itemId: tx.itemId,
         chatRoomId: roomId,
       );
     } catch (e) {
-      debugPrint('[TransactionService] Payment verification notification failed (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Payment verification notification failed (non-fatal): $e',
+      );
     }
   }
 
@@ -678,7 +741,8 @@ class TransactionService {
     await sendTransactionSystemMessage(
       roomId: roomId,
       senderId: actionUserId,
-      text: 'Transaction cancelled by ${actionUserId == tx.buyerId ? "buyer" : "seller"}. Reason: $reason',
+      text:
+          'Transaction cancelled by ${actionUserId == tx.buyerId ? "buyer" : "seller"}. Reason: $reason',
       type: 'transaction_update',
     );
 
@@ -692,7 +756,9 @@ class TransactionService {
         chatRoomId: roomId,
       );
     } catch (e) {
-      debugPrint('[TransactionService] Cancellation notification failed (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Cancellation notification failed (non-fatal): $e',
+      );
     }
   }
 
@@ -744,7 +810,9 @@ class TransactionService {
         chatRoomId: roomId,
       );
     } catch (e) {
-      debugPrint('[TransactionService] Completion notification failed (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Completion notification failed (non-fatal): $e',
+      );
     }
 
     // Trigger trust score recalculation for both buyer and seller
@@ -752,7 +820,9 @@ class TransactionService {
       unawaited(TrustScoreService.instance.recalculateForUser(tx.buyerId));
       unawaited(TrustScoreService.instance.recalculateForUser(tx.sellerId));
     } catch (e) {
-      debugPrint('[TransactionService] Trust score update triggered (non-fatal): $e');
+      debugPrint(
+        '[TransactionService] Trust score update triggered (non-fatal): $e',
+      );
     }
   }
 }

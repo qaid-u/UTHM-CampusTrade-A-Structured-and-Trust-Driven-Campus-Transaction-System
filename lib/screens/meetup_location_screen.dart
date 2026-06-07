@@ -14,7 +14,10 @@ class MeetupLocationScreen extends StatefulWidget {
 
 class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
   GoogleMapController? _mapController;
-  LatLng _selectedLatLng = const LatLng(1.8538, 103.0863); // Center of UTHM Campus
+  LatLng _selectedLatLng = const LatLng(
+    1.8538,
+    103.0863,
+  ); // Center of UTHM Campus
   LatLng? _userLocation; // User's current GPS location
   String _selectedAddress = 'UTHM Parit Raja Campus';
   bool _isLocating = false;
@@ -55,36 +58,48 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
     _determineInitialPosition();
   }
 
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    _mapController = null;
+    super.dispose();
+  }
+
+  void _safeSetState(VoidCallback update) {
+    if (!mounted) return;
+    setState(update);
+  }
+
   /// Handles GPS permissions and centers the map on current user location
   Future<void> _determineInitialPosition() async {
     if (!mounted) return;
-    setState(() => _isLocating = true);
+    _safeSetState(() => _isLocating = true);
     try {
       LocationPermission permission = await Geolocator.checkPermission();
+      if (!mounted) return;
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+        if (!mounted) return;
       }
 
       if (permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse) {
         final position = await Geolocator.getCurrentPosition(
-          locationSettings: LocationSettings(
-            accuracy: LocationAccuracy.high,
-          ),
+          locationSettings: LocationSettings(accuracy: LocationAccuracy.high),
         );
+        if (!mounted) return;
         final userLatLng = LatLng(position.latitude, position.longitude);
-        if (mounted) {
-          setState(() {
-            _selectedLatLng = userLatLng;
-            _userLocation = userLatLng;
-          });
-        }
+        _safeSetState(() {
+          _selectedLatLng = userLatLng;
+          _userLocation = userLatLng;
+        });
         _mapController?.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(target: userLatLng, zoom: 16.5),
           ),
         );
         await _reverseGeocode(userLatLng);
+        if (!mounted) return;
         _calculateDistance();
       } else {
         // Fallback to library coordinates
@@ -92,23 +107,23 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
       }
     } catch (e) {
       debugPrint('Geolocator failed: $e');
+      if (!mounted) return;
       _selectPreset(_presetLocations.first);
     } finally {
-      if (mounted) {
-        setState(() => _isLocating = false);
-      }
+      _safeSetState(() => _isLocating = false);
     }
   }
 
   /// Reverse geocodes the coordinates into a human-readable street address using free OS geocoder
   Future<void> _reverseGeocode(LatLng latLng) async {
     if (!mounted) return;
-    setState(() => _isGeocoding = true);
+    _safeSetState(() => _isGeocoding = true);
     try {
       final placemarks = await placemarkFromCoordinates(
         latLng.latitude,
         latLng.longitude,
       ).timeout(const Duration(seconds: 4));
+      if (!mounted) return;
 
       if (placemarks.isNotEmpty) {
         final p = placemarks.first;
@@ -116,35 +131,30 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
         final street = p.street ?? '';
         final locality = p.locality ?? 'Parit Raja';
         final address = name == street ? name : '$name, $street';
-        if (mounted) {
-          setState(() {
-            _selectedAddress = '$address, $locality'.replaceAll(', null', '');
-          });
-        }
+        _safeSetState(() {
+          _selectedAddress = '$address, $locality'.replaceAll(', null', '');
+        });
       } else {
-        if (mounted) {
-          setState(() {
-            _selectedAddress = 'Location: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
-          });
-        }
+        _safeSetState(() {
+          _selectedAddress =
+              'Location: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+        });
       }
     } catch (e) {
       debugPrint('Geocoding failed: $e');
-      if (mounted) {
-        setState(() {
-          _selectedAddress = 'Location: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
-        });
-      }
+      _safeSetState(() {
+        _selectedAddress =
+            'Location: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+      });
     } finally {
-      if (mounted) {
-        setState(() => _isGeocoding = false);
-      }
+      _safeSetState(() => _isGeocoding = false);
     }
   }
 
   void _selectPreset(Map<String, dynamic> preset) {
+    if (!mounted) return;
     final latLng = LatLng(preset['lat'] as double, preset['lng'] as double);
-    setState(() {
+    _safeSetState(() {
       _selectedLatLng = latLng;
       _selectedAddress = preset['name'] as String;
     });
@@ -158,17 +168,16 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
 
   /// Calculate distance from user's current location to selected meetup point
   void _calculateDistance() {
-    if (_userLocation != null) {
-      final distanceInMeters = Geolocator.distanceBetween(
-        _userLocation!.latitude,
-        _userLocation!.longitude,
-        _selectedLatLng.latitude,
-        _selectedLatLng.longitude,
-      );
-      setState(() {
-        _distanceFromUser = distanceInMeters / 1000; // Convert to km
-      });
-    }
+    if (!mounted || _userLocation == null) return;
+    final distanceInMeters = Geolocator.distanceBetween(
+      _userLocation!.latitude,
+      _userLocation!.longitude,
+      _selectedLatLng.latitude,
+      _selectedLatLng.longitude,
+    );
+    _safeSetState(() {
+      _distanceFromUser = distanceInMeters / 1000; // Convert to km
+    });
   }
 
   /// Check if location is within UTHM campus boundary (1.5 km radius)
@@ -195,14 +204,17 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
               child: SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               ),
             )
           else
             IconButton(
               icon: const Icon(Icons.my_location),
               onPressed: _determineInitialPosition,
-            )
+            ),
         ],
       ),
       body: Stack(
@@ -213,7 +225,13 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
               target: _selectedLatLng,
               zoom: 16.0,
             ),
-            onMapCreated: (controller) => _mapController = controller,
+            onMapCreated: (controller) {
+              if (!mounted) {
+                controller.dispose();
+                return;
+              }
+              _mapController = controller;
+            },
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
@@ -227,7 +245,8 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                   BitmapDescriptor.hueBlue,
                 ),
                 onDragEnd: (newPosition) {
-                  setState(() => _selectedLatLng = newPosition);
+                  if (!mounted) return;
+                  _safeSetState(() => _selectedLatLng = newPosition);
                   _reverseGeocode(newPosition);
                 },
                 infoWindow: InfoWindow(
@@ -236,21 +255,27 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                 ),
               ),
               // Preset safe campus locations (Green markers)
-              ..._presetLocations.map((preset) => Marker(
-                    markerId: MarkerId('safe_${preset['name']}'),
-                    position: LatLng(preset['lat'] as double, preset['lng'] as double),
-                    icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueGreen,
-                    ),
-                    infoWindow: InfoWindow(
-                      title: preset['name'] as String,
-                      snippet: preset['desc'] as String,
-                    ),
-                    onTap: () => _selectPreset(preset),
-                  )),
+              ..._presetLocations.map(
+                (preset) => Marker(
+                  markerId: MarkerId('safe_${preset['name']}'),
+                  position: LatLng(
+                    preset['lat'] as double,
+                    preset['lng'] as double,
+                  ),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueGreen,
+                  ),
+                  infoWindow: InfoWindow(
+                    title: preset['name'] as String,
+                    snippet: preset['desc'] as String,
+                  ),
+                  onTap: () => _selectPreset(preset),
+                ),
+              ),
             }.toSet(),
             onTap: (clickedLatLng) {
-              setState(() => _selectedLatLng = clickedLatLng);
+              if (!mounted) return;
+              _safeSetState(() => _selectedLatLng = clickedLatLng);
               _reverseGeocode(clickedLatLng);
             },
           ),
@@ -261,13 +286,22 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
             left: 16,
             right: 16,
             child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               elevation: 4,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Row(
                   children: [
-                    const Icon(Icons.location_on, color: Colors.redAccent, size: 28),
+                    const Icon(
+                      Icons.location_on,
+                      color: Colors.redAccent,
+                      size: 28,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -327,7 +361,11 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2),
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                  ),
                 ],
               ),
               child: Column(
@@ -365,9 +403,13 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                             width: 220,
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: isChosen ? Colors.blue.shade50 : Colors.grey.shade50,
+                              color: isChosen
+                                  ? Colors.blue.shade50
+                                  : Colors.grey.shade50,
                               border: Border.all(
-                                color: isChosen ? Colors.blue : Colors.grey.shade300,
+                                color: isChosen
+                                    ? Colors.blue
+                                    : Colors.grey.shade300,
                                 width: 1.5,
                               ),
                               borderRadius: BorderRadius.circular(10),
@@ -383,7 +425,9 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
-                                    color: isChosen ? Colors.blue.shade800 : Colors.black87,
+                                    color: isChosen
+                                        ? Colors.blue.shade800
+                                        : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -445,7 +489,11 @@ class _MeetupLocationScreenState extends State<MeetupLocationScreen> {
                         icon: const Icon(Icons.check_circle, size: 20),
                         label: const Text(
                           'CONFIRM MEETUP LOCATION',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                     ),
