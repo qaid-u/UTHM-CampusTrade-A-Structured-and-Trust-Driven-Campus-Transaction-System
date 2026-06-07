@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/item_model.dart';
-import '../models/notification_model.dart';
 import '../services/auth_service.dart';
 import '../services/app_config_service.dart';
 import '../services/notification_service.dart';
@@ -34,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Add debouncing to prevent rapid reloads
   bool _isReloading = false;
   DateTime? _lastLoadTime;
-  Stream<List<NotificationModel>>? _notificationsStream;
+  Stream<int>? _unreadNotificationsStream;
 
   List<String> get _categories => AppConfigService.instance.categories;
 
@@ -46,8 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final user = AuthService.instance.currentUser;
       if (user != null) {
         // Only initialize notifications if user is authenticated
-        _notificationsStream = NotificationService.instance
-            .getUserNotifications(user.uid);
+        _unreadNotificationsStream = NotificationService.instance
+            .unreadCountStream(user.uid);
         // Load items for authenticated user
         _loadItems();
       } else {
@@ -237,12 +236,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("UTHM CampusTrade",
-                style: TextStyle(
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                )),
+            Text(
+              "UTHM CampusTrade",
+              style: TextStyle(
+                color: Colors.blue.shade700,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
           ],
         ),
         actions: [_notificationButton(user.uid)],
@@ -607,11 +608,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _notificationButton(String userId) {
     return StreamBuilder(
-      stream: _notificationsStream,
+      stream: _unreadNotificationsStream,
       builder: (context, snapshot) {
-        final list = snapshot.data ?? [];
-
-        final count = list.where((n) => n.isRead == false).length;
+        final count = snapshot.data ?? 0;
 
         return IconButton(
           icon: Stack(

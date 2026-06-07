@@ -5,6 +5,7 @@ class ReviewModel {
   final String transactionId;
   final String reviewerId;
   final String revieweeId;
+  final String reviewerName;
   final int rating;
   final String comment;
   final DateTime createdAt;
@@ -14,6 +15,7 @@ class ReviewModel {
     required this.transactionId,
     required this.reviewerId,
     required this.revieweeId,
+    this.reviewerName = '',
     required this.rating,
     this.comment = '',
     required this.createdAt,
@@ -25,6 +27,7 @@ class ReviewModel {
       transactionId: json['transactionId'] ?? '',
       reviewerId: json['reviewerId'] ?? '',
       revieweeId: json['revieweeId'] ?? '',
+      reviewerName: json['reviewerName'] ?? '',
       rating: json['rating'] ?? 0,
       comment: json['comment'] ?? '',
       createdAt: _readTimestamp(json['createdAt']),
@@ -41,6 +44,7 @@ class ReviewModel {
       'transactionId': transactionId,
       'reviewerId': reviewerId,
       'revieweeId': revieweeId,
+      if (reviewerName.isNotEmpty) 'reviewerName': reviewerName,
       'rating': rating,
       'comment': comment,
       'createdAt': Timestamp.fromDate(createdAt),

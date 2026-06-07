@@ -323,10 +323,12 @@ class TransactionService {
           NotificationService.instance.notifyUser(
             userId: otherBuyerId,
             title: "Offer Rejected",
-            body: "The item has been sold to another buyer.",
-            type: 'system',
-            itemId: itemId,
-            chatRoomId: otherRoomId,
+            body: "Your offer for $itemTitle was rejected.",
+            type: 'offer_rejected',
+            relatedId: offerId,
+            relatedType: 'transaction',
+            route: 'transaction',
+            transactionId: offerId,
           ),
         );
       }
@@ -349,10 +351,12 @@ class TransactionService {
       await NotificationService.instance.notifyUser(
         userId: buyerId,
         title: "Offer Accepted 🎉",
-        body: "Seller accepted your offer of RM ${price.toStringAsFixed(2)}!",
-        type: 'system',
-        itemId: itemId,
-        chatRoomId: roomId,
+        body: "Your offer for $itemTitle was accepted.",
+        type: 'offer_accepted',
+        relatedId: offerId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: offerId,
       );
     } catch (e) {
       debugPrint(
@@ -596,10 +600,12 @@ class TransactionService {
         await NotificationService.instance.notifyUser(
           userId: otherUserId,
           title: "Meetup Confirmed 📍",
-          body: "Meetup scheduled at ${updatedTx.meetupLocation}",
+          body: "${updatedTx.itemTitle} is now meetup pending",
           type: 'transaction_update',
-          itemId: updatedTx.itemId,
-          chatRoomId: roomId,
+          relatedId: transactionId,
+          relatedType: 'transaction',
+          route: 'transaction',
+          transactionId: transactionId,
         );
       } catch (e) {
         debugPrint(
@@ -658,6 +664,21 @@ class TransactionService {
       text: 'Payment receipt uploaded. Seller, please verify the payment.',
       type: 'transaction_update',
     );
+
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: tx.sellerId,
+        title: 'Receipt Uploaded',
+        body: 'Buyer uploaded a payment receipt for ${tx.itemTitle}',
+        type: 'receipt_uploaded',
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
+      );
+    } catch (e) {
+      debugPrint('[TransactionService] Receipt notification failed: $e');
+    }
   }
 
   /// Manual verification of DuitNow receipts by Seller
@@ -693,11 +714,12 @@ class TransactionService {
       await NotificationService.instance.notifyUser(
         userId: tx.buyerId,
         title: "Payment Verified",
-        body:
-            "Seller verified your payment. You can now confirm item collection.",
-        type: 'transaction_update',
-        itemId: tx.itemId,
-        chatRoomId: roomId,
+        body: "Seller verified your payment for ${tx.itemTitle}",
+        type: 'payment_verified',
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
       );
     } catch (e) {
       debugPrint(
@@ -749,11 +771,13 @@ class TransactionService {
     try {
       await NotificationService.instance.notifyUser(
         userId: otherUserId,
-        title: "Transaction Cancelled",
-        body: "The deal for ${tx.itemTitle} was cancelled.",
+        title: "Transaction Updated",
+        body: "${tx.itemTitle} is now cancelled",
         type: 'transaction_update',
-        itemId: tx.itemId,
-        chatRoomId: roomId,
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
       );
     } catch (e) {
       debugPrint(
@@ -804,10 +828,32 @@ class TransactionService {
       await NotificationService.instance.notifyUser(
         userId: tx.sellerId,
         title: "Transaction Completed 🎉",
-        body: "Buyer confirmed receipt of the item.",
-        type: 'transaction_update',
-        itemId: tx.itemId,
-        chatRoomId: roomId,
+        body: "${tx.itemTitle} is now completed",
+        type: 'transaction_completed',
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
+      );
+      await NotificationService.instance.notifyUser(
+        userId: tx.buyerId,
+        title: "Transaction Updated",
+        body: "${tx.itemTitle} is now completed",
+        type: 'transaction_completed',
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
+      );
+      await NotificationService.instance.notifyMultipleUsers(
+        userIds: [tx.buyerId, tx.sellerId],
+        title: "Leave a Review",
+        body: "Rate your completed transaction anonymously.",
+        type: 'review_prompt',
+        relatedId: transactionId,
+        relatedType: 'transaction',
+        route: 'transaction',
+        transactionId: transactionId,
       );
     } catch (e) {
       debugPrint(

@@ -1,9 +1,20 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+
+import '../screens/chat_screen.dart';
+import '../screens/item_detail_screen.dart';
+import '../screens/premium_screen.dart';
+import '../screens/transaction_history_screen.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('Background FCM message received: ${message.messageId}');
+}
 
 /// Handles Firebase Cloud Messaging (FCM) integration.
 ///
@@ -24,8 +35,12 @@ class FCMService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _initialized = false;
+  String? _lastSavedToken;
+
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   /// Initialization channel ID for local notifications
   static const String _channelId = 'campustrade_messages';
@@ -42,8 +57,9 @@ class FCMService {
     if (_initialized) return true;
 
     // Setup local notifications
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -74,7 +90,7 @@ class FCMService {
     // Get initial FCM token
     String? token;
     try {
-      token = await _messaging.getToken();
+      token = await getToken();
     } catch (e) {
       debugPrint('FCM getToken failed (likely missing SHA-1 fingerprint): $e');
     }
@@ -120,9 +136,13 @@ class FCMService {
 
   /// Saves the current user's FCM token to their Firestore document.
   Future<void> _saveTokenForCurrentUser(String token) async {
-    // The token is stored in users/{uid}/fcmToken
-    // Actual saving is done by explicit call from AuthService.
+    if (_lastSavedToken == token) return;
     try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        await saveToken(user.uid, token);
+      }
+      _lastSavedToken = token;
       debugPrint('FCM token obtained: ${token.substring(0, 20)}...');
     } catch (e) {
       debugPrint('FCM token save failed: $e');
@@ -131,11 +151,13 @@ class FCMService {
 
   /// External: save token for a specific user (called from AuthService).
   Future<void> saveToken(String userId, String token) async {
+    if (userId.isEmpty || token.isEmpty || _lastSavedToken == token) return;
     try {
       await _db.collection('users').doc(userId).update({
         'fcmToken': token,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'fcmUpdatedAt': FieldValue.serverTimestamp(),
       });
+      _lastSavedToken = token;
     } catch (e) {
       debugPrint('FCMService.saveToken error: $e');
     }
@@ -146,15 +168,23 @@ class FCMService {
     try {
       await _db.collection('users').doc(userId).update({
         'fcmToken': FieldValue.delete(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'fcmUpdatedAt': FieldValue.serverTimestamp(),
       });
+      _lastSavedToken = null;
     } catch (e) {
       debugPrint('FCMService.removeToken error: $e');
     }
   }
 
   /// Get the FCM token for the current device.
-  Future<String?> getToken() => _messaging.getToken();
+  Future<String?> getToken() async {
+    try {
+      return await _messaging.getToken();
+    } catch (e) {
+      debugPrint('FCMService.getToken error: $e');
+      return null;
+    }
+  }
 
   /// Display a local notification when the app is in the foreground.
   Future<void> showLocalNotification({
@@ -204,7 +234,16 @@ class FCMService {
 
   /// Handle when user taps on a notification.
   void _onNotificationTap(NotificationResponse response) {
-    _handleNotificationTapData({});
+    if (response.payload == null || response.payload!.isEmpty) {
+      _handleNotificationTapData({});
+      return;
+    }
+    try {
+      final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+      _handleNotificationTapData(data);
+    } catch (_) {
+      _handleNotificationTapData({});
+    }
   }
 
   void _handleNotificationTap(RemoteMessage message) {
@@ -212,18 +251,51 @@ class FCMService {
   }
 
   void _handleNotificationTapData(Map<String, dynamic> data) {
-    // Navigation on notification tap can be implemented here
-    // e.g., navigate to a specific chat room or item detail
     debugPrint('FCM notification tapped with data: $data');
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return;
+
+    final route = data['route']?.toString() ?? '';
+    final relatedId = data['relatedId']?.toString() ?? '';
+
+    switch (route) {
+      case 'chat':
+        if (relatedId.isEmpty) return;
+        navigator.push(
+          MaterialPageRoute(builder: (_) => ChatScreen(roomId: relatedId)),
+        );
+        break;
+      case 'item':
+        if (relatedId.isEmpty) return;
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => ItemDetailScreen(itemId: relatedId),
+          ),
+        );
+        break;
+      case 'transaction':
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+        );
+        break;
+      case 'premium':
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const PremiumScreen()),
+        );
+        break;
+      default:
+        break;
+    }
   }
 
   /// Retrieve the FCM server key from Firestore config document.
   Future<String?> _getServerKey() async {
     try {
-      final doc =
-          await _db.collection('config').doc('app').get().timeout(
-                const Duration(seconds: 3),
-              );
+      final doc = await _db
+          .collection('config')
+          .doc('app')
+          .get()
+          .timeout(const Duration(seconds: 3));
       return doc.data()?['fcmServerKey'] as String?;
     } catch (e) {
       debugPrint('FCMService._getServerKey error: $e');
@@ -244,47 +316,46 @@ class FCMService {
     required String userId,
     required String title,
     required String body,
+    Map<String, String> data = const {},
   }) async {
     try {
       // Get recipient's FCM token
-      final userDoc =
-          await _db.collection('users').doc(userId).get().timeout(
-                const Duration(seconds: 3),
-              );
+      final userDoc = await _db
+          .collection('users')
+          .doc(userId)
+          .get()
+          .timeout(const Duration(seconds: 3));
       final token = userDoc.data()?['fcmToken'] as String?;
       if (token == null || token.isEmpty) return;
 
       // Get FCM server key from config
       final serverKey = await _getServerKey();
       if (serverKey == null || serverKey.isEmpty) {
-        debugPrint('FCM server key not configured. Add to config/app > fcmServerKey');
+        debugPrint(
+          'FCM server key not configured. Add to config/app > fcmServerKey',
+        );
         return;
       }
 
-      final response = await http.post(
-        Uri.parse('https://fcm.googleapis.com/fcm/send'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'key=$serverKey',
-        },
-        body: jsonEncode({
-          'to': token,
-          'notification': {
-            'title': title,
-            'body': body,
-          },
-          'data': {
-            'click_action': 'FLUTTER_NOTIFICATION_CLICK',
-          },
-        }),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .post(
+            Uri.parse('https://fcm.googleapis.com/fcm/send'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'key=$serverKey',
+            },
+            body: jsonEncode({
+              'to': token,
+              'notification': {'title': title, 'body': body},
+              'data': {'click_action': 'FLUTTER_NOTIFICATION_CLICK', ...data},
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         debugPrint('FCM push sent to user $userId');
       } else {
-        debugPrint(
-          'FCM push failed: ${response.statusCode} ${response.body}',
-        );
+        debugPrint('FCM push failed: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       debugPrint('FCMService.sendPush error: $e');

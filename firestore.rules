@@ -6,6 +6,22 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function validNotificationType(type) {
+      return [
+        "message",
+        "offer",
+        "offer_accepted",
+        "offer_rejected",
+        "transaction_update",
+        "receipt_uploaded",
+        "payment_verified",
+        "transaction_completed",
+        "review_prompt",
+        "premium",
+        "system"
+      ].hasAny([type]);
+    }
+
     // User profiles are readable by signed-in users for marketplace identity.
     // App-side flows also update profile, subscription, token, and trust fields.
     match /users/{userId} {
@@ -49,7 +65,19 @@ service cloud.firestore {
 
     // Notifications and app config are used by client-side app flows.
     match /notifications/{notificationId} {
-      allow read, create, update, delete: if signedIn();
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId is string
+        && request.resource.data.title is string
+        && request.resource.data.body is string
+        && request.resource.data.type is string
+        && validNotificationType(request.resource.data.type)
+        && request.resource.data.isRead == false;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isRead', 'readAt']);
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /config/{configId} {

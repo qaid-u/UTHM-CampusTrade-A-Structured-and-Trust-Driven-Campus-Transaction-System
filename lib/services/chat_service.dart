@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/chat_room_model.dart';
 import '../models/message_model.dart';
+import 'notification_service.dart';
 
 class ChatService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -152,6 +155,80 @@ class ChatService {
     batch.set(roomRef, updateData, SetOptions(merge: true));
 
     await batch.commit();
-    debugPrint('✅ ChatService.sendMessage completed');
+    debugPrint('ChatService.sendMessage completed');
+
+    if (type == 'text') {
+      unawaited(
+        _notifyMessageReceivers(
+          roomId: roomId,
+          senderId: senderId,
+          text: text,
+          participants: participants,
+        ),
+      );
+    }
+  }
+
+  static Future<void> _notifyMessageReceivers({
+    required String roomId,
+    required String senderId,
+    required String text,
+    required List<String> participants,
+  }) async {
+    try {
+      final senderDoc = await _db.collection('users').doc(senderId).get();
+      final senderName =
+          senderDoc.data()?['name']?.toString().trim().isNotEmpty == true
+          ? senderDoc.data()!['name'].toString()
+          : 'Someone';
+      final preview = text.length > 70 ? '${text.substring(0, 67)}...' : text;
+
+      await NotificationService.instance.notifyMultipleUsers(
+        userIds: participants,
+        excludeUserId: senderId,
+        title: 'New Message',
+        body: '$senderName: $preview',
+        type: 'message',
+        relatedId: roomId,
+        relatedType: 'chatRoom',
+        route: 'chat',
+        chatRoomId: roomId,
+      );
+    } catch (e) {
+      debugPrint('Chat notification failed (non-fatal): $e');
+    }
+  }
+
+  static Future<void> deleteChatRoomForUser({
+    required String roomId,
+    required String userId,
+  }) async {
+    final roomRef = _db.collection('chatRooms').doc(roomId);
+    final roomDoc = await roomRef.get();
+    if (!roomDoc.exists) return;
+
+    final participants = List<String>.from(
+      roomDoc.data()?['participantIds'] ?? const <String>[],
+    );
+    if (!participants.contains(userId)) {
+      throw Exception('You are not a participant in this chat.');
+    }
+
+    final messages = await roomRef.collection('messages').limit(100).get();
+    var batch = _db.batch();
+    var operations = 0;
+
+    for (final message in messages.docs) {
+      batch.delete(message.reference);
+      operations++;
+      if (operations >= 450) {
+        await batch.commit();
+        batch = _db.batch();
+        operations = 0;
+      }
+    }
+
+    batch.delete(roomRef);
+    await batch.commit();
   }
 }

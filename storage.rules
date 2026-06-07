@@ -23,6 +23,10 @@ service firebase.storage {
         && request.resource.size < maxSizeMB * 1024 * 1024;
     }
 
+    function canUploadImage(maxSizeMB) {
+      return isAuthenticated() && isImage() && isValidSize(maxSizeMB);
+    }
+
     // ============================================
     // STORAGE PATH RULES
     // ============================================
@@ -34,14 +38,14 @@ service firebase.storage {
     // - Max 5MB for profile pictures
     match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if canUploadImage(5);
       allow delete: if isAuthenticated();
     }
 
     // Legacy path: /profile_pictures/{userId}/*
     match /profile_pictures/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if canUploadImage(5);
       allow delete: if isAuthenticated();
     }
 
@@ -53,14 +57,14 @@ service firebase.storage {
     // - Must be image files only
     match /items/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if canUploadImage(10);
       allow delete: if isAuthenticated();
     }
 
     // Legacy path: /item_images/{itemId}/*
     match /item_images/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(10);
+      allow create, update: if canUploadImage(10);
       allow delete: if isAuthenticated();
     }
 
@@ -71,7 +75,7 @@ service firebase.storage {
     // - Max 2MB for thumbnails
     match /thumbnails/{itemId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(2);
+      allow create, update: if canUploadImage(2);
       allow delete: if isAuthenticated();
     }
 
@@ -82,23 +86,25 @@ service firebase.storage {
     // - Max 5MB per photo
     match /transactions/{transactionId}/{allPaths=**} {
       allow read: if isAuthenticated(); // Can be restricted further with Firestore check
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if canUploadImage(5);
       allow delete: if isAuthenticated();
     }
 
-    // 5. CHAT IMAGES (for transaction receipts)
+    // 5. CHAT IMAGES AND RECEIPTS
     // Path: /chat/{roomId}/* and /chats/{roomId}/*
     // - Only authenticated users can read/write
     // - Max 5MB per chat image (compressed JPEG receipts)
+    // - Delete is allowed separately so "delete chat" can clear storage assets
+    //   without requiring upload metadata like request.resource.contentType.
     match /chat/{roomId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if canUploadImage(5);
       allow delete: if isAuthenticated();
     }
 
     match /chats/{roomId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isImage() && isValidSize(5);
+      allow create, update: if canUploadImage(5);
       allow delete: if isAuthenticated();
     }
 

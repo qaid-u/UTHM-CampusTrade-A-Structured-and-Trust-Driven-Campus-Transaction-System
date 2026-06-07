@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'notification_service.dart';
 
 /// SINGLE source of truth for all premium/subscription logic.
 ///
@@ -162,6 +163,20 @@ class SubscriptionService {
       'premiumExpiryDate': Timestamp.fromDate(expiry),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    try {
+      await NotificationService.instance.notifyUser(
+        userId: user.uid,
+        title: 'Premium Activated',
+        body: 'Your Premium benefits are now active.',
+        type: 'premium',
+        relatedId: user.uid,
+        relatedType: 'premium',
+        route: 'premium',
+      );
+    } catch (e) {
+      debugPrint('[SubscriptionService] Premium notification failed: $e');
+    }
 
     debugPrint('[SubscriptionService] Premium activated until $expiry');
   }

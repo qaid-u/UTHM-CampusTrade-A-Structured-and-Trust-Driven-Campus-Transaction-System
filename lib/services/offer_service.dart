@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/offer_model.dart';
 import 'chat_service.dart';
+import 'notification_service.dart';
 import 'transaction_service.dart';
 
 class OfferService {
@@ -48,6 +49,24 @@ class OfferService {
       offerStatus: 'pending',
       itemId: itemId,
     );
+
+    try {
+      final buyerDoc = await _db.collection('users').doc(buyerId).get();
+      final buyerName =
+          buyerDoc.data()?['name']?.toString().trim().isNotEmpty == true
+          ? buyerDoc.data()!['name'].toString()
+          : 'Buyer';
+      await NotificationService.instance.notifyUser(
+        userId: sellerId,
+        title: 'New Offer Received',
+        body: '$buyerName offered RM${price.toStringAsFixed(2)} for $itemTitle',
+        type: 'offer',
+        relatedId: offerRef.id,
+        relatedType: 'offer',
+        route: 'chat',
+        chatRoomId: roomId,
+      );
+    } catch (_) {}
   }
 
   static Future<void> updateOfferStatus({
@@ -118,5 +137,23 @@ class OfferService {
       type: 'system',
       text: systemText,
     );
+
+    if (status == 'rejected') {
+      try {
+        final data = offerDoc.data()!;
+        final itemDoc = await _db.collection('items').doc(data['itemId']).get();
+        final itemTitle = itemDoc.data()?['title'] ?? 'your item';
+        await NotificationService.instance.notifyUser(
+          userId: data['buyerId'],
+          title: 'Offer Rejected',
+          body: 'Your offer for $itemTitle was rejected.',
+          type: 'offer_rejected',
+          relatedId: offerId,
+          relatedType: 'offer',
+          route: 'chat',
+          chatRoomId: roomId,
+        );
+      } catch (_) {}
+    }
   }
 }

@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _password = TextEditingController();
 
   bool _loading = false;
+  bool _resettingPassword = false;
 
   @override
   void dispose() {
@@ -57,6 +58,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _password,
                 obscureText: true,
                 decoration: const InputDecoration(labelText: "Password"),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _resettingPassword ? null : _forgotPassword,
+                  child: Text(
+                    _resettingPassword
+                        ? "Sending reset link..."
+                        : "Forgot password?",
+                  ),
+                ),
               ),
 
               const SizedBox(height: 20),
@@ -136,6 +148,98 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _loading = false);
       MediaFeedbackService.instance.playError();
       FeedbackHelper.showError(context, "An unexpected error occurred");
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final studentIdController = TextEditingController(
+      text: _studentId.text.trim(),
+    );
+
+    final studentId = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Reset Password"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Enter your Student ID. A reset link will be sent to your UTHM student email.",
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: studentIdController,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: "Student ID",
+                helperText: "Example: DI230000",
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = studentIdController.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(context, value);
+            },
+            child: const Text("Send Link"),
+          ),
+        ],
+      ),
+    );
+
+    studentIdController.dispose();
+    if (studentId == null || studentId.trim().isEmpty) return;
+
+    setState(() => _resettingPassword = true);
+
+    try {
+      final error = await AuthService.instance.sendPasswordReset(
+        studentId: studentId.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() => _resettingPassword = false);
+
+      if (error == null) {
+        MediaFeedbackService.instance.playNotification();
+        FeedbackHelper.showSuccess(
+          context,
+          "Password reset link sent to $studentId@student.uthm.edu.my",
+        );
+      } else {
+        MediaFeedbackService.instance.playError();
+        if (error.contains('user-not-found')) {
+          FeedbackHelper.showError(
+            context,
+            "No account found for that Student ID.",
+          );
+        } else if (error.contains('invalid-email')) {
+          FeedbackHelper.showError(context, "Please enter a valid Student ID.");
+        } else if (error.contains('network')) {
+          FeedbackHelper.showError(
+            context,
+            "Network error. Please check your internet connection.",
+          );
+        } else {
+          FeedbackHelper.showError(
+            context,
+            "Could not send reset link: $error",
+          );
+        }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _resettingPassword = false);
+      MediaFeedbackService.instance.playError();
+      FeedbackHelper.showError(context, "Could not send reset link.");
     }
   }
 }

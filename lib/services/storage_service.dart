@@ -221,4 +221,27 @@ class StorageService {
       throw Exception("Receipt image upload error: $e");
     }
   }
+
+  Future<void> deleteChatAssets(String roomId) async {
+    Future<void> deleteFolder(String path) async {
+      try {
+        final folder = _storage.ref().child(path);
+        final list = await folder.listAll();
+        for (final item in list.items) {
+          await item.delete();
+        }
+        for (final prefix in list.prefixes) {
+          final nested = await prefix.listAll();
+          for (final item in nested.items) {
+            await item.delete();
+          }
+        }
+      } catch (e) {
+        debugPrint('Chat asset cleanup skipped for $path: $e');
+      }
+    }
+
+    await deleteFolder('chats/$roomId');
+    await deleteFolder('chat/$roomId');
+  }
 }

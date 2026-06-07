@@ -210,15 +210,14 @@ class ItemService {
   }
 
   /// Stream a seller's available listings (for SellerProfileScreen).
-  /// Requires composite index: sellerId ASC, status ASC, createdAt DESC.
+  /// Sort locally to avoid needing a composite index during live demos.
   Stream<List<ItemModel>> watchSellerListings(String sellerId) {
     return _itemsRef
         .where('sellerId', isEqualTo: sellerId)
         .where('status', isEqualTo: 'available')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
+          final items = snapshot.docs
               .map((doc) {
                 try {
                   return ItemModel.fromFirestore(doc);
@@ -228,6 +227,8 @@ class ItemService {
               })
               .whereType<ItemModel>()
               .toList();
+          items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return items;
         });
   }
 

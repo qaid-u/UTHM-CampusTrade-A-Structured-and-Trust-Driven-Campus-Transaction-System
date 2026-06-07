@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/item_model.dart';
 import '../models/review_model.dart';
@@ -111,11 +112,8 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
     final name = data['name'] ?? 'Unknown Seller';
     final studentId = data['studentId'] ?? '';
     final profileImage = data['profileImage'] ?? '';
-    final rating = (data['rating'] ?? 0).toDouble();
     final trustScore = (data['trustScore'] ?? 0).toDouble();
-    final totalReviews = data['totalReviews'] ?? 0;
     final completedTransactions = data['completedTransactions'] ?? 0;
-    final activeListingCount = data['activeListingCount'] ?? 0;
     final createdAt = data['createdAt'];
     final isPremium = SubscriptionService.isPremiumActive(data);
 
@@ -192,40 +190,9 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
 
             const SizedBox(height: 20),
 
-            // ---- Stats Row ----
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _buildStatCard(
-                    Icons.star_rounded,
-                    rating.toStringAsFixed(1),
-                    'Rating',
-                    Colors.amber,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildStatCard(
-                    Icons.shield_rounded,
-                    '${trustScore.toStringAsFixed(0)}',
-                    'Trust Score',
-                    _getTrustScoreColor(trustScore),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildStatCard(
-                    Icons.reviews_rounded,
-                    '$totalReviews',
-                    'Reviews',
-                    Colors.blue,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildStatCard(
-                    Icons.check_circle_rounded,
-                    '$completedTransactions',
-                    'Completed',
-                    Colors.green,
-                  ),
-                ],
-              ),
+            _buildLiveStatsRow(
+              trustScore: trustScore,
+              completedTransactions: completedTransactions,
             ),
 
             const SizedBox(height: 24),
@@ -240,24 +207,7 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$activeListingCount',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ),
+                  _buildLiveListingCountChip(),
                 ],
               ),
             ),
@@ -321,6 +271,81 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLiveStatsRow({
+    required double trustScore,
+    required int completedTransactions,
+  }) {
+    return StreamBuilder<List<ReviewModel>>(
+      stream: ReviewService.getReviewsForUser(widget.sellerId),
+      builder: (context, reviewSnapshot) {
+        final reviews = reviewSnapshot.data ?? const <ReviewModel>[];
+        final averageRating = reviews.isEmpty
+            ? 0.0
+            : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
+                  reviews.length;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              _buildStatCard(
+                Icons.star_rounded,
+                averageRating.toStringAsFixed(1),
+                'Rating',
+                Colors.amber,
+              ),
+              const SizedBox(width: 8),
+              _buildStatCard(
+                Icons.shield_rounded,
+                '${trustScore.toStringAsFixed(0)}',
+                'Trust Score',
+                _getTrustScoreColor(trustScore),
+              ),
+              const SizedBox(width: 8),
+              _buildStatCard(
+                Icons.reviews_rounded,
+                '${reviews.length}',
+                'Reviews',
+                Colors.blue,
+              ),
+              const SizedBox(width: 8),
+              _buildStatCard(
+                Icons.check_circle_rounded,
+                '$completedTransactions',
+                'Completed',
+                Colors.green,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLiveListingCountChip() {
+    return StreamBuilder<List<ItemModel>>(
+      stream: ItemService.instance.watchSellerListings(widget.sellerId),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.length ?? 0;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -456,8 +481,47 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           itemCount: reviews.length,
           padding: const EdgeInsets.symmetric(horizontal: 0),
           itemBuilder: (context, index) {
-            return ReviewCard(review: reviews[index]);
+            final canSeeReviewer =
+                FirebaseAuth.instance.currentUser?.uid == widget.sellerId;
+            final review = reviews[index];
+            if (!canSeeReviewer) {
+              return ReviewCard(review: review);
+            }
+            return _ReviewCardWithReviewerName(review: review);
           },
+        );
+      },
+    );
+  }
+}
+
+class _ReviewCardWithReviewerName extends StatelessWidget {
+  const _ReviewCardWithReviewerName({required this.review});
+
+  final ReviewModel review;
+
+  @override
+  Widget build(BuildContext context) {
+    if (review.reviewerName.isNotEmpty) {
+      return ReviewCard(review: review, showReviewerName: true);
+    }
+
+    return FutureBuilder<String>(
+      future: ReviewService.getReviewerName(review.reviewerId),
+      builder: (context, snapshot) {
+        final name = snapshot.data ?? '';
+        return ReviewCard(
+          review: ReviewModel(
+            id: review.id,
+            transactionId: review.transactionId,
+            reviewerId: review.reviewerId,
+            revieweeId: review.revieweeId,
+            reviewerName: name,
+            rating: review.rating,
+            comment: review.comment,
+            createdAt: review.createdAt,
+          ),
+          showReviewerName: true,
         );
       },
     );

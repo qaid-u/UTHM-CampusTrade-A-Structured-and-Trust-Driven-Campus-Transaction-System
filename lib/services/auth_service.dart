@@ -36,6 +36,7 @@ class AuthService {
 
       final uid = cred.user!.uid;
 
+      final fcmToken = await FCMService.instance.getToken() ?? '';
       await _db.collection('users').doc(uid).set({
         'uid': uid,
         'name': name,
@@ -44,7 +45,8 @@ class AuthService {
         'email': email,
         'bio': '',
         'profileImage': AppDefaults.defaultProfileImage,
-        'fcmToken': await FCMService.instance.getToken() ?? '',
+        'fcmToken': fcmToken,
+        if (fcmToken.isNotEmpty) 'fcmUpdatedAt': FieldValue.serverTimestamp(),
         'trustScore': 0.0,
         'completedTransactions': 0,
         'rating': 0.0,
@@ -87,6 +89,16 @@ class AuthService {
     }
   }
 
+  Future<String?> sendPasswordReset({required String studentId}) async {
+    try {
+      final email = _emailFromStudentId(studentId.trim());
+      await _auth.sendPasswordResetEmail(email: email);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   Future<void> _ensureUserDoc(User user) async {
     final ref = _db.collection('users').doc(user.uid);
     final doc = await ref.get();
@@ -103,10 +115,12 @@ class AuthService {
         'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
+      final fcmToken = await FCMService.instance.getToken() ?? '';
       await ref.set({
         'profileImage': doc['profileImage'] ?? AppDefaults.defaultProfileImage,
         'bio': doc['bio'] ?? '',
-        'fcmToken': await FCMService.instance.getToken() ?? '',
+        if (fcmToken.isNotEmpty) 'fcmToken': fcmToken,
+        if (fcmToken.isNotEmpty) 'fcmUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     }
   }

@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/media_feedback_service.dart';
-import '../services/notification_service.dart';
 import '../services/offer_service.dart';
 import '../widgets/premium_badge.dart';
 import '../services/subscription_service.dart';
@@ -567,14 +566,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         price: result,
       );
 
-      await NotificationService.instance.notifyUser(
-        userId: sellerId,
-        title: "New Offer",
-        body: "RM ${result.toStringAsFixed(2)}",
-        type: 'offer',
-        itemId: widget.itemId,
-        chatRoomId: roomId,
-      );
       MediaFeedbackService.instance.playNotification();
     } catch (e) {
       MediaFeedbackService.instance.playError();

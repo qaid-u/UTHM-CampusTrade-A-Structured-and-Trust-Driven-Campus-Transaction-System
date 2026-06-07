@@ -6,9 +6,14 @@ import '../models/review_model.dart';
 /// Shows only: star rating, "Verified Transaction" badge, and date.
 /// No reviewer identity (name, image, ID) is ever shown.
 class ReviewCard extends StatelessWidget {
-  const ReviewCard({super.key, required this.review});
+  const ReviewCard({
+    super.key,
+    required this.review,
+    this.showReviewerName = false,
+  });
 
   final ReviewModel review;
+  final bool showReviewerName;
 
   @override
   Widget build(BuildContext context) {
@@ -23,11 +28,26 @@ class ReviewCard extends StatelessWidget {
             Row(
               children: List.generate(5, (i) {
                 return Icon(
-                  i < review.rating ? Icons.star_rounded : Icons.star_border_rounded,
+                  i < review.rating
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
                   size: 22,
                   color: Colors.amber,
                 );
               }),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              showReviewerName && review.reviewerName.isNotEmpty
+                  ? 'From ${review.reviewerName}'
+                  : 'Anonymous reviewer',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: showReviewerName && review.reviewerName.isNotEmpty
+                    ? Colors.grey.shade800
+                    : Colors.grey.shade600,
+              ),
             ),
             const SizedBox(height: 8),
 
@@ -64,10 +84,7 @@ class ReviewCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 review.comment,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade700,
-                ),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
               ),
             ],
 
@@ -76,10 +93,7 @@ class ReviewCard extends StatelessWidget {
             // Date
             Text(
               _formatDate(review.createdAt),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
           ],
         ),
@@ -89,8 +103,18 @@ class ReviewCard extends StatelessWidget {
 
   String _formatDate(DateTime dt) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }

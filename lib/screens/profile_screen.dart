@@ -797,7 +797,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               )
             else
-              ...reviews.take(3).map((review) => ReviewCard(review: review)),
+              ...reviews
+                  .take(3)
+                  .map((review) => _ReviewCardWithReviewerName(review: review)),
           ],
         );
       },
@@ -905,6 +907,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
         ),
       ),
+    );
+  }
+}
+
+class _ReviewCardWithReviewerName extends StatelessWidget {
+  const _ReviewCardWithReviewerName({required this.review});
+
+  final ReviewModel review;
+
+  @override
+  Widget build(BuildContext context) {
+    if (review.reviewerName.isNotEmpty) {
+      return ReviewCard(review: review, showReviewerName: true);
+    }
+
+    return FutureBuilder<String>(
+      future: ReviewService.getReviewerName(review.reviewerId),
+      builder: (context, snapshot) {
+        final name = snapshot.data ?? '';
+        return ReviewCard(
+          review: ReviewModel(
+            id: review.id,
+            transactionId: review.transactionId,
+            reviewerId: review.reviewerId,
+            revieweeId: review.revieweeId,
+            reviewerName: name,
+            rating: review.rating,
+            comment: review.comment,
+            createdAt: review.createdAt,
+          ),
+          showReviewerName: true,
+        );
+      },
     );
   }
 }
