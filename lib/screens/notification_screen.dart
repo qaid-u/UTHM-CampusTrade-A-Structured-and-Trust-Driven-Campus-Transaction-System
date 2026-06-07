@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/notification_model.dart';
 import '../services/auth_service.dart';
@@ -177,10 +178,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     switch (notification.route) {
       case 'chat':
-        if (relatedId.isEmpty) return;
+        final roomId = await _resolveChatRoomId(notification);
+        if (roomId.isEmpty) return;
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ChatScreen(roomId: relatedId)),
+          MaterialPageRoute(builder: (_) => ChatScreen(roomId: roomId)),
         );
         break;
       case 'item':
@@ -206,6 +208,24 @@ class _NotificationScreenState extends State<NotificationScreen> {
         break;
       default:
         break;
+    }
+  }
+
+  Future<String> _resolveChatRoomId(NotificationModel notification) async {
+    final relatedId = notification.relatedId.trim();
+    if (relatedId.isEmpty) return '';
+    if (notification.relatedType != 'offer') return relatedId;
+
+    try {
+      final offerDoc = await FirebaseFirestore.instance
+          .collection('offers')
+          .doc(relatedId)
+          .get()
+          .timeout(const Duration(seconds: 5));
+      final roomId = offerDoc.data()?['roomId']?.toString() ?? '';
+      return roomId.isNotEmpty ? roomId : relatedId;
+    } catch (_) {
+      return relatedId;
     }
   }
 

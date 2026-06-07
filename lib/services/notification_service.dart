@@ -92,13 +92,6 @@ class NotificationService {
   }) async {
     if (userId.trim().isEmpty) return;
 
-    final resolvedRelatedId = relatedId.isNotEmpty
-        ? relatedId
-        : chatRoomId?.isNotEmpty == true
-        ? chatRoomId!
-        : transactionId?.isNotEmpty == true
-        ? transactionId!
-        : itemId ?? '';
     final resolvedRoute = route.isNotEmpty
         ? route
         : chatRoomId?.isNotEmpty == true
@@ -108,13 +101,20 @@ class NotificationService {
         : itemId?.isNotEmpty == true
         ? 'item'
         : '';
+    final resolvedRelatedId = _resolveRelatedId(
+      route: resolvedRoute,
+      relatedId: relatedId,
+      itemId: itemId,
+      chatRoomId: chatRoomId,
+      transactionId: transactionId,
+    );
     final resolvedRelatedType = relatedType.isNotEmpty
         ? relatedType
-        : chatRoomId?.isNotEmpty == true
+        : resolvedRoute == 'chat'
         ? 'chatRoom'
-        : transactionId?.isNotEmpty == true
+        : resolvedRoute == 'transaction'
         ? 'transaction'
-        : itemId?.isNotEmpty == true
+        : resolvedRoute == 'item'
         ? 'item'
         : '';
 
@@ -282,6 +282,28 @@ class NotificationService {
 
   String _normalizeType(String type) {
     return allowedTypes.contains(type) ? type : 'system';
+  }
+
+  String _resolveRelatedId({
+    required String route,
+    required String relatedId,
+    String? itemId,
+    String? chatRoomId,
+    String? transactionId,
+  }) {
+    if (route == 'chat' && chatRoomId?.isNotEmpty == true) {
+      return chatRoomId!;
+    }
+    if (route == 'transaction' && transactionId?.isNotEmpty == true) {
+      return transactionId!;
+    }
+    if (route == 'item' && itemId?.isNotEmpty == true) {
+      return itemId!;
+    }
+    if (relatedId.isNotEmpty) return relatedId;
+    if (chatRoomId?.isNotEmpty == true) return chatRoomId!;
+    if (transactionId?.isNotEmpty == true) return transactionId!;
+    return itemId ?? '';
   }
 
   String _cleanText(String value, {String fallback = ''}) {

@@ -57,6 +57,7 @@ class AuthService {
         'totalReviews': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      FCMService.instance.startNotificationMirror(uid);
 
       return null;
     } catch (e) {
@@ -123,6 +124,7 @@ class AuthService {
         if (fcmToken.isNotEmpty) 'fcmUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     }
+    FCMService.instance.startNotificationMirror(user.uid);
   }
 
   Future<void> logout() async {
