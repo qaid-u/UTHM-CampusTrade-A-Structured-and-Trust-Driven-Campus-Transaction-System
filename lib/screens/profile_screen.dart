@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../constants/app_defaults.dart';
 import '../screens/item_detail_screen.dart';
 import '../services/auth_service.dart';
+import '../services/item_service.dart';
 import '../services/storage_service.dart';
 import '../models/item_model.dart';
 import '../models/review_model.dart';
@@ -346,6 +347,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _confirmDeleteListing(ItemModel item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || item.sellerId != user.uid) {
+      FeedbackHelper.showError(
+        context,
+        "You can only delete listings from your own account.",
+      );
+      return;
+    }
+
+    final confirm = await FeedbackHelper.showConfirmation(
+      context,
+      title: "Delete Listing",
+      message:
+          "Delete \"${item.title}\" from your profile?\n\nThis removes the listing and its uploaded images.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      confirmColor: Colors.red,
+    );
+
+    if (!confirm || !mounted) return;
+
+    FeedbackHelper.showLoading(context, message: "Deleting listing...");
+
+    try {
+      try {
+        await StorageService.instance.deleteItemImages(item.id);
+      } catch (e) {
+        debugPrint('Item image cleanup skipped for ${item.id}: $e');
+      }
+
+      await ItemService.instance.deleteItem(item.id);
+
+      if (!mounted) return;
+      FeedbackHelper.hideLoading(context);
+      FeedbackHelper.showSuccess(context, "Listing deleted successfully");
+    } catch (e) {
+      if (!mounted) return;
+      FeedbackHelper.hideLoading(context);
+      FeedbackHelper.showError(context, "Failed to delete listing: $e");
+    }
+  }
+
   /// Builds a star rating string from a numeric rating value
   String _buildStarRating(double rating) {
     final fullStars = rating.floor();
@@ -639,6 +683,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 4),
                             _buildListingStatusChip(item.status),
                           ],
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          color: Colors.red.shade600,
+                          tooltip: 'Delete listing',
+                          onPressed: () => _confirmDeleteListing(item),
                         ),
                         isThreeLine: true,
                         onTap: () {
