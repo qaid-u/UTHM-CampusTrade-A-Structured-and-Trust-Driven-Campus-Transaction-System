@@ -241,3 +241,7 @@ This project is developed for academic purposes under UTHM coursework requiremen
 # 🔥 Project Summary
 
 UTHM CampusTrade transforms informal student trading into a structured, secure, and scalable digital marketplace designed specifically for campus environments. It emphasizes trust, safety, and usability while promoting sustainable consumption within the university ecosystem.
+
+# 🔥 Setup Guide
+
+Please refer SETUP_GUIDE.md for setup processes
