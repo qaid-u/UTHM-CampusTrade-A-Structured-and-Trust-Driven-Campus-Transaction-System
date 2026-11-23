@@ -14,7 +14,15 @@ The application replaces unorganized trading through messaging apps and social m
 |:---:|:---:|
 | <img src="docs/screenshots/login.png" width="260" alt="Login screen"> | <img src="docs/screenshots/register.png" width="260" alt="Register screen"> |
 
-> Registration and login use Firebase Authentication, so you need a UTHM student account to see the marketplace screens.
+### 🔑 Demo account
+
+Use this shared account to explore the app without registering:
+
+| Student ID | Password |
+|:---:|:---:|
+| `DEMO0001` | `Demo@1234` |
+
+> This is a public test account on a shared demo backend. Please don't post personal information, and expect content to be reset or removed at any time.
 
 ---
 
