@@ -6,6 +6,18 @@ The application replaces unorganized trading through messaging apps and social m
 
 ---
 
+# 👀 Live Preview
+
+**Try it in your browser:** [https://qaid-u.github.io/UTHM-CampusTrade-A-Structured-and-Trust-Driven-Campus-Transaction-System/](https://qaid-u.github.io/UTHM-CampusTrade-A-Structured-and-Trust-Driven-Campus-Transaction-System/)
+
+| Login | Register |
+|:---:|:---:|
+| <img src="docs/screenshots/login.png" width="260" alt="Login screen"> | <img src="docs/screenshots/register.png" width="260" alt="Register screen"> |
+
+> Registration and login use Firebase Authentication, so you need a UTHM student account to see the marketplace screens.
+
+---
+
 # 🚀 Project Objectives
 
 The main objectives of this project are:
@@ -166,7 +178,7 @@ Tracks user transaction history and status updates.
 
 ## 1. Clone Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/uthm-campus-trade.git
+git clone https://github.com/qaid-u/UTHM-CampusTrade-A-Structured-and-Trust-Driven-Campus-Transaction-System.git
 ```
 
 ## 2. Install Dependencies
